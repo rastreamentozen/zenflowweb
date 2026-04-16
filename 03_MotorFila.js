@@ -250,7 +250,7 @@ function web_obterFilaGeral() {
          }
       }
 
-      // 2. Extração da Data de E-mail (SLA Híbrido)
+      // 2. Extração da Data de E-mail (SLA Híbrido -> agora apenas referência para Etapa 3)
       let dEmail = null;
       const valDataEmail = l[MAPA_COLUNAS.DATA_EMAIL];
       if (valDataEmail instanceof Date) {
@@ -263,31 +263,32 @@ function web_obterFilaGeral() {
          }
       }
 
-      // 3. Cálculo Exato de SLA (Régua Dupla)
+      // 3. Cálculo Exato de SLA (Régua Contínua)
       let diasDecorridosParaSLA = 0;
-      let limiteBaseSLA = 10;
+      let limiteBaseSLA = 10; // Limite global estabelecido para a operação
       let diasUteisParaUI = 0; // Exibição visual do painel
 
       if (dPlanilha && !isNaN(dPlanilha)) {
          try { diasUteisParaUI = calcularDiasUteis(dPlanilha, dtHoje, feriadosTime); } catch(e) {}
       }
 
-      if (numEtapa === 1) {
-          limiteBaseSLA = 10;
+      // Etapa 1 e Etapa 2: Sofrem redução progressiva de acordo com os dias que já passaram desde a entrada.
+      if (numEtapa === 1 || numEtapa === 2) {
           diasDecorridosParaSLA = diasUteisParaUI;
-      } else if (numEtapa === 2) {
-          limiteBaseSLA = 5;
-          if (dEmail && !isNaN(dEmail)) {
-              try { diasDecorridosParaSLA = calcularDiasUteis(dEmail, dtHoje, feriadosTime); } catch(e) {}
+      } 
+      // Etapa 3 (Prazo Expirado): Congela os dias úteis entre a Entrada e a data do E-mail de 5 Dias para manter a coerência textual.
+      else if (numEtapa === 3) {
+          if (dPlanilha && !isNaN(dPlanilha) && dEmail && !isNaN(dEmail)) {
+              try { diasDecorridosParaSLA = calcularDiasUteis(dPlanilha, dEmail, feriadosTime); } catch(e) {}
+          } else {
+              diasDecorridosParaSLA = diasUteisParaUI;
           }
-      } else {
-          limiteBaseSLA = 0;
       }
 
       const telefone = l[MAPA_COLUNAS.TELEFONE] ? String(l[MAPA_COLUNAS.TELEFONE]).trim() : "";
       let msgWhats = "";
       
-      // [SÊNIOR FIX]: Alimentamos a máquina com a Base Limite exata dependendo da etapa (10 ou 5)
+      // [SÊNIOR FIX]: Alimentamos a máquina com a Base Limite fixa (10) e dias decorridos consolidados
       if (telefone) {
         const idVeic = placa || chassi;
         const isPlural = String(idVeic).includes(",") || String(idVeic).includes(" e ");

@@ -9,7 +9,7 @@ function aplicarTemplate(dict, chave, nomeCliente, identificadorVeiculo, isPlura
   let diasRestantes = base;
 
   if (diasDecorridosSLA !== undefined && diasDecorridosSLA !== null && !isNaN(diasDecorridosSLA)) {
-     // Subtrai da base (10 ou 5) e usa Math.max para impedir números negativos (ex: -2 dias)
+     // Subtrai da base (10) e usa Math.max para impedir números negativos (ex: -2 dias)
      diasRestantes = Math.max(0, base - parseInt(diasDecorridosSLA));
   }
 

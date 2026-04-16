@@ -20,31 +20,37 @@ function obterPreviewDisparoAgrupadoWeb(grupos) {
     const isPlural = g.veiculosStr.includes(",");
     const lblVeic = isPlural ? "Veículos" : "Veículo";
 
-    // [SÊNIOR FIX]: SLA Híbrido injetado no momento da prévia do WebApp
+    // [SÊNIOR FIX]: SLA Contínuo injetado no momento da prévia do WebApp com Fallback de Data
     let diasDecorridosParaSLA = 0;
-    let limiteBaseSLA = 10;
+    let limiteBaseSLA = 10; // Fixo em 10 dias para cálculo global
+    
+    let dtEntrada = null;
+    const dPlanilhaStr = g.dataEntrada || (g.linhas && g.linhas.length > 0 ? g.linhas[0].dataPlanilha : "") || "";
+    if (dPlanilhaStr) {
+       const partes = String(dPlanilhaStr).split(" ")[0].split("/");
+       if (partes.length === 3) {
+          dtEntrada = new Date(partes[2], partes[1] - 1, partes[0]);
+       }
+    }
 
-    if (g.etapaNum === 1) {
-        limiteBaseSLA = 10;
-        if (g.dataEntrada) {
-           const partes = String(g.dataEntrada).split(" ")[0].split("/");
-           if (partes.length === 3) {
-              const dtEntrada = new Date(partes[2], partes[1] - 1, partes[0]);
-              try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
-           }
+    if (g.etapaNum === 1 || g.etapaNum === 2) {
+        if (dtEntrada) {
+            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
         }
-    } else if (g.etapaNum === 2) {
-        limiteBaseSLA = 5;
-        const dEmailStr = g.linhas[0].dataEmail || "";
+    } else if (g.etapaNum === 3) {
+        const dEmailStr = (g.linhas && g.linhas.length > 0 ? g.linhas[0].dataEmail : "") || "";
+        let dEmailObj = null;
         if (dEmailStr && dEmailStr !== "Aguardando...") {
-           const partes = dEmailStr.split(" ")[0].split("/");
+           const partes = String(dEmailStr).split(" ")[0].split("/");
            if (partes.length === 3) {
-              const dEmailObj = new Date(partes[2], partes[1] - 1, partes[0]);
-              try { diasDecorridosParaSLA = calcularDiasUteis(dEmailObj, dtHoje, feriadosTime); } catch(e) {}
+              dEmailObj = new Date(partes[2], partes[1] - 1, partes[0]);
            }
         }
-    } else {
-        limiteBaseSLA = 0;
+        if (dtEntrada && dEmailObj) {
+            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dEmailObj, feriadosTime); } catch(e) {}
+        } else if (dtEntrada) {
+            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
+        }
     }
 
     if (g.etapaNum === 1) {
@@ -72,7 +78,7 @@ function obterPreviewDisparoAgrupadoWeb(grupos) {
       msgWhats = "> *MENSAGEM AUTOMÁTICA*\n> _Esse WhatsApp é utilizado apenas para envio de recados_\n> _Nossos contatos estarão disponíveis no final da mensagem_\n\n" + txt;
     }
 
-    let telefoneBase = g.linhas[0].telefone || "";
+    let telefoneBase = (g.linhas && g.linhas.length > 0) ? (g.linhas[0].telefone || "") : "";
     let numeroLimpo = telefoneBase.toString().replace(/\D/g, "");
     if (numeroLimpo.length >= 10 && !numeroLimpo.startsWith("55")) numeroLimpo = "55" + numeroLimpo;
     
@@ -105,31 +111,37 @@ function dispararEmailAgrupadoWeb(grupos, responsavel) {
     const isPlural = g.veiculosStr.includes(",");
     const lblVeic = isPlural ? "Veículos" : "Veículo";
 
-    // [SÊNIOR FIX]: SLA Híbrido aplicado no Disparo Efetivo
+    // [SÊNIOR FIX]: SLA Contínuo aplicado no Disparo Efetivo com Fallback
     let diasDecorridosParaSLA = 0;
-    let limiteBaseSLA = 10;
+    let limiteBaseSLA = 10; // Fixo em 10 dias para cálculo global
+    
+    let dtEntrada = null;
+    const dPlanilhaStr = g.dataEntrada || (g.linhas && g.linhas.length > 0 ? g.linhas[0].dataPlanilha : "") || "";
+    if (dPlanilhaStr) {
+       const partes = String(dPlanilhaStr).split(" ")[0].split("/");
+       if (partes.length === 3) {
+          dtEntrada = new Date(partes[2], partes[1] - 1, partes[0]);
+       }
+    }
 
-    if (g.etapaNum === 1) {
-        limiteBaseSLA = 10;
-        if (g.dataEntrada) {
-           const partes = String(g.dataEntrada).split(" ")[0].split("/");
-           if (partes.length === 3) {
-              const dtEntrada = new Date(partes[2], partes[1] - 1, partes[0]);
-              try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
-           }
+    if (g.etapaNum === 1 || g.etapaNum === 2) {
+        if (dtEntrada) {
+            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
         }
-    } else if (g.etapaNum === 2) {
-        limiteBaseSLA = 5;
-        const dEmailStr = g.linhas[0].dataEmail || "";
+    } else if (g.etapaNum === 3) {
+        const dEmailStr = (g.linhas && g.linhas.length > 0 ? g.linhas[0].dataEmail : "") || "";
+        let dEmailObj = null;
         if (dEmailStr && dEmailStr !== "Aguardando...") {
-           const partes = dEmailStr.split(" ")[0].split("/");
+           const partes = String(dEmailStr).split(" ")[0].split("/");
            if (partes.length === 3) {
-              const dEmailObj = new Date(partes[2], partes[1] - 1, partes[0]);
-              try { diasDecorridosParaSLA = calcularDiasUteis(dEmailObj, dtHoje, feriadosTime); } catch(e) {}
+              dEmailObj = new Date(partes[2], partes[1] - 1, partes[0]);
            }
         }
-    } else {
-        limiteBaseSLA = 0;
+        if (dtEntrada && dEmailObj) {
+            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dEmailObj, feriadosTime); } catch(e) {}
+        } else if (dtEntrada) {
+            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
+        }
     }
 
     if (g.etapaNum === 1) {
