@@ -1,7 +1,7 @@
 // ====================================================================================
 // MOTOR GRAMATICAL E SLA
 // ====================================================================================
-function aplicarTemplate(dict, chave, nomeCliente, identificadorVeiculo, isPlural, diasDecorridosSLA, limiteBaseSLA) {
+function aplicarTemplate(dict, chave, nomeCliente, identificadorVeiculo, isPlural, diasDecorridosSLA, limiteBaseSLA, dataEntradaStr) {
   let txt = dict[chave] || "⚠️ Erro: Template não encontrado.";
 
   // [SÊNIOR FIX]: Lógica Matemática do SLA dinâmico (Contagem Regressiva)
@@ -16,7 +16,8 @@ function aplicarTemplate(dict, chave, nomeCliente, identificadorVeiculo, isPlura
   let textoFinal = txt
     .replace(/{{NOME}}/g, nomeCliente)
     .replace(/{{VEICULO}}/g, identificadorVeiculo)
-    .replace(/{{DIAS_RESTANTES}}/g, diasRestantes);
+    .replace(/{{DIAS_RESTANTES}}/g, diasRestantes)
+    .replace(/{{DATA_ENTRADA}}/g, dataEntradaStr || "Data não registrada");
   
   if (isPlural) {
     const mapaPlural = [

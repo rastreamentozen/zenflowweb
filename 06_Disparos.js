@@ -20,14 +20,16 @@ function obterPreviewDisparoAgrupadoWeb(grupos) {
     const isPlural = g.veiculosStr.includes(",");
     const lblVeic = isPlural ? "Veículos" : "Veículo";
 
-    // [SÊNIOR FIX]: SLA Contínuo injetado no momento da prévia do WebApp com Fallback de Data
     let diasDecorridosParaSLA = 0;
-    let limiteBaseSLA = 10; // Fixo em 10 dias para cálculo global
+    let limiteBaseSLA = 10; 
     
     let dtEntrada = null;
+    let dataEntradaFormatada = "Data não registrada";
     const dPlanilhaStr = g.dataEntrada || (g.linhas && g.linhas.length > 0 ? g.linhas[0].dataPlanilha : "") || "";
+    
     if (dPlanilhaStr) {
-       const partes = String(dPlanilhaStr).split(" ")[0].split("/");
+       dataEntradaFormatada = String(dPlanilhaStr).split(" ")[0];
+       const partes = dataEntradaFormatada.split("/");
        if (partes.length === 3) {
           dtEntrada = new Date(partes[2], partes[1] - 1, partes[0]);
        }
@@ -48,28 +50,29 @@ function obterPreviewDisparoAgrupadoWeb(grupos) {
         }
         if (dtEntrada && dEmailObj) {
             try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dEmailObj, feriadosTime); } catch(e) {}
-        } else if (dtEntrada) {
-            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
+        } else {
+            // [SÊNIOR FIX]: Fallback - Se não houver envio prévio de 5 dias, mantém o padrão fixo de 5 dias restantes (10 base - 5 passados)
+            diasDecorridosParaSLA = 5;
         }
     }
 
     if (g.etapaNum === 1) {
       tituloHeader = "BEM-VINDO À ZEN SEGUROS";
       ass = `Bem-vindo à ZEN Seguros - Orientações - ${lblVeic}: ${g.veiculosStr}`;
-      txt = aplicarTemplate(templatesDict, g.isFipeBaixa ? "BOAS_VINDAS_FIPE_BAIXA" : "BOAS_VINDAS_NORMAL", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA);
+      txt = aplicarTemplate(templatesDict, g.isFipeBaixa ? "BOAS_VINDAS_FIPE_BAIXA" : "BOAS_VINDAS_NORMAL", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA, dataEntradaFormatada);
     } else if (g.etapaNum === 2) {
       tituloHeader = "LEMBRETE: INSTALAÇÃO PENDENTE";
       ass = `Lembrete: Instalação Pendente - ${lblVeic}: ${g.veiculosStr}`;
-      txt = aplicarTemplate(templatesDict, "LEMBRETE_5_DIAS", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA);
+      txt = aplicarTemplate(templatesDict, "LEMBRETE_5_DIAS", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA, dataEntradaFormatada);
     } else {
       tituloHeader = "URGENTE: PRAZO EXPIRADO";
       ass = `[URGENTE] Prazo Expirado! ${lblVeic}: ${g.veiculosStr}`;
-      txt = aplicarTemplate(templatesDict, "PRAZO_EXPIRADO", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA);
+      txt = aplicarTemplate(templatesDict, "PRAZO_EXPIRADO", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA, dataEntradaFormatada);
     }
 
     const htmlBodyFormatado = formatarComoEmail(txt, tituloHeader);
     
-    let disclaimerFormatado = aplicarTemplate(templatesDict, "WHATSAPP_DISCLAIMER", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA);
+    let disclaimerFormatado = aplicarTemplate(templatesDict, "WHATSAPP_DISCLAIMER", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA, dataEntradaFormatada);
     let msgWhats = "";
     
     if (disclaimerFormatado && disclaimerFormatado.indexOf("⚠️ Erro:") === -1) {
@@ -111,14 +114,15 @@ function dispararEmailAgrupadoWeb(grupos, responsavel) {
     const isPlural = g.veiculosStr.includes(",");
     const lblVeic = isPlural ? "Veículos" : "Veículo";
 
-    // [SÊNIOR FIX]: SLA Contínuo aplicado no Disparo Efetivo com Fallback
     let diasDecorridosParaSLA = 0;
-    let limiteBaseSLA = 10; // Fixo em 10 dias para cálculo global
+    let limiteBaseSLA = 10; 
     
     let dtEntrada = null;
+    let dataEntradaFormatada = "Data não registrada";
     const dPlanilhaStr = g.dataEntrada || (g.linhas && g.linhas.length > 0 ? g.linhas[0].dataPlanilha : "") || "";
     if (dPlanilhaStr) {
-       const partes = String(dPlanilhaStr).split(" ")[0].split("/");
+       dataEntradaFormatada = String(dPlanilhaStr).split(" ")[0];
+       const partes = dataEntradaFormatada.split("/");
        if (partes.length === 3) {
           dtEntrada = new Date(partes[2], partes[1] - 1, partes[0]);
        }
@@ -139,25 +143,26 @@ function dispararEmailAgrupadoWeb(grupos, responsavel) {
         }
         if (dtEntrada && dEmailObj) {
             try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dEmailObj, feriadosTime); } catch(e) {}
-        } else if (dtEntrada) {
-            try { diasDecorridosParaSLA = calcularDiasUteis(dtEntrada, dtHoje, feriadosTime); } catch(e) {}
+        } else {
+            // [SÊNIOR FIX]: Fallback para o Motor Efetivo também
+            diasDecorridosParaSLA = 5;
         }
     }
 
     if (g.etapaNum === 1) {
       tituloHeader = "BEM-VINDO À ZEN SEGUROS";
       ass = `Bem-vindo à ZEN Seguros - Orientações - ${lblVeic}: ${g.veiculosStr}`;
-      txt = aplicarTemplate(templatesDict, g.isFipeBaixa ? "BOAS_VINDAS_FIPE_BAIXA" : "BOAS_VINDAS_NORMAL", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA);
+      txt = aplicarTemplate(templatesDict, g.isFipeBaixa ? "BOAS_VINDAS_FIPE_BAIXA" : "BOAS_VINDAS_NORMAL", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA, dataEntradaFormatada);
       ac = "1_EMAIL";
     } else if (g.etapaNum === 2) {
       tituloHeader = "LEMBRETE: INSTALAÇÃO PENDENTE";
       ass = `Lembrete: Instalação Pendente - ${lblVeic}: ${g.veiculosStr}`;
-      txt = aplicarTemplate(templatesDict, "LEMBRETE_5_DIAS", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA);
+      txt = aplicarTemplate(templatesDict, "LEMBRETE_5_DIAS", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA, dataEntradaFormatada);
       ac = "2_EMAIL";
     } else {
       tituloHeader = "URGENTE: PRAZO EXPIRADO";
       ass = `[URGENTE] Prazo Expirado! ${lblVeic}: ${g.veiculosStr}`;
-      txt = aplicarTemplate(templatesDict, "PRAZO_EXPIRADO", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA);
+      txt = aplicarTemplate(templatesDict, "PRAZO_EXPIRADO", g.nome, g.veiculosStr, isPlural, diasDecorridosParaSLA, limiteBaseSLA, dataEntradaFormatada);
       ac = "3_EMAIL";
     }
 

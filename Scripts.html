@@ -30,7 +30,7 @@
     function dispararImpressaoFila() {
        if (cacheFilaFiltrada.length === 0) return aviso("⚠️ Nenhum dado na tabela para imprimir.");
        const cabecalhos = ["Etapa", "Cliente", "Veículo / FIPE", "Data Entrada", "Data Envio", "Contato", "Localização", "Fipe Baixa", "Resp. Email", "Resp. Whats"];
-       const linhasHTML = cacheFilaFiltrada.map(cli => { let fipeDisplay = formatarMoedaBRL(cli.fipe).replace('💰 ', ''); let veiculoDisplay = cli.placa ? cli.placa : (cli.chassi ? cli.chassi : "-"); return '<tr><td style="text-align:center; font-weight:bold;">' + (cli.etapaNum === 1 ? "Boas Vindas" : cli.etapaNum === 2 ? "Alerta 5d" : "Prazo Exp") + '</td><td style="font-weight:bold;">' + (cli.nome || "-") + '</td><td>' + veiculoDisplay + '<br><span style="color:#10b981; font-weight:bold;">' + fipeDisplay + '</span></td><td>' + cli.dataPlanilha + '</td><td>' + (cli.dataEnvio || "Aguardando...") + '</td><td>' + (cli.email || "-") + '<br>' + (cli.telefone || "-") + '</td><td><b>' + (cli.estado || "N/A") + '</b><br><span>' + (cli.cidade || "") + '</span></td><td style="text-align:center; ' + (cli.isFipeBaixa ? 'color:red; font-weight:bold;' : '') + '">' + (cli.isFipeBaixa ? 'SIM' : 'NÃO') + '</td><td style="text-align:center; ' + (cli.isRespondeuEmail ? 'color:green; font-weight:bold;' : '') + '">' + (cli.isRespondeuEmail ? 'SIM' : 'NÃO') + '</td><td style="text-align:center; ' + (cli.isRespondeuWhats ? 'color:green; font-weight:bold;' : '') + '">' + (cli.isRespondeuWhats ? 'SIM' : 'NÃO') + '</td></tr>'; }).join('');
+       const linhasHTML = cacheFilaFiltrada.map(cli => { let fipeDisplay = formatarMoedaBRL(cli.fipe).replace('💰 ', ''); let veiculoDisplay = cli.placa ? cli.placa : (cli.chassi ? cli.chassi : "-"); return '<tr><td style="text-align:center; font-weight:bold;">' + (cli.etapaNum === 1 ? "Boas Vindas" : cli.etapaNum === 2 ? "Alerta 5d" : "Prazo Exp") + '</td><td style="font-weight:bold;">' + (cli.nome || "-") + '</td><td>' + veiculoDisplay + '<br><span style="color:#10b981; font-weight:bold;">' + fipeDisplay + '</span></td><td>' + cli.dataPlanilha + '</td><td>' + (cli.dataEmail || "Aguardando...") + '</td><td>' + (cli.email || "-") + '<br>' + (cli.telefone || "-") + '</td><td><b>' + (cli.estado || "N/A") + '</b><br><span>' + (cli.cidade || "") + '</span></td><td style="text-align:center; ' + (cli.isFipeBaixa ? 'color:red; font-weight:bold;' : '') + '">' + (cli.isFipeBaixa ? 'SIM' : 'NÃO') + '</td><td style="text-align:center; ' + (cli.isRespondeuEmail ? 'color:green; font-weight:bold;' : '') + '">' + (cli.isRespondeuEmail ? 'SIM' : 'NÃO') + '</td><td style="text-align:center; ' + (cli.isRespondeuWhats ? 'color:green; font-weight:bold;' : '') + '">' + (cli.isRespondeuWhats ? 'SIM' : 'NÃO') + '</td></tr>'; }).join('');
        imprimirTabela("Fila Unificada", cabecalhos, linhasHTML);
     }
 
@@ -353,10 +353,15 @@
           let htmlLocalizacao = `<div class="flex items-center justify-between gap-2"><div class="cursor-help font-black text-[13px] whitespace-nowrap ${cli.isTecnicoIndisp ? 'text-amber-600 dark:text-amber-500' : 'text-slate-700 dark:text-slate-300'}" title="${tooltipEnd}">📍 ${cli.estado || "N/A"}</div><div class="flex items-center gap-1 print:hidden" title="Travar Cliente"><span class="text-lg grayscale opacity-70">🔒</span> ${criarToggle('tecnicoIndisp', cli.idUnico, cli.isTecnicoIndisp, 'bg-amber-500')}</div></div>`;
           let htmlLogistica = `<span class="text-slate-400 dark:text-slate-500 italic text-[10px]">Sem rota definida</span>`;
           if (cli.tecnicoDisp) { let tD = String(cli.tecnicoTipo || "Volante"); let nT = tD === 'Base' ? 'Base Física' : tD === 'Outros Estados' ? 'Outros Estados' : 'Técnico Volante'; htmlLogistica = `<div class="font-bold text-[11px] text-slate-700 dark:text-slate-300 w-32 truncate cursor-help hover:text-indigo-600 transition" title="Atendimento: ${nT}">👷 ${cli.tecnicoDisp}</div><div class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">🛣️ ${cli.tecnicoDist} • ⏳ ${cli.tecnicoTempo}</div>`; }
-          let htmlDisparos = `<div class="flex items-center gap-1.5 mt-1.5">`; let tD = false;
-          if (cli.isEnviado) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="📧 E-mail disparado em:\n${cli.dataEmail || 'Não registrado'}">📧</span>`; tD = true; }
-          if (cli.isWhatsEnviado) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="💬 WhatsApp disparado em:\n${cli.dataWhats || 'Não registrado'}">💬</span>`; tD = true; }
-          if (!tD) { htmlDisparos += `<span class="text-slate-400 italic text-[10px] font-medium border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-md">Aguardando</span>`; } htmlDisparos += `</div>`;
+          
+          let htmlDisparos = `<div class="flex items-center gap-1.5 mt-1.5 flex-wrap">`; 
+          let tD = false;
+          if (cli.histE1) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="🔰 Boas Vindas (Etapa 1)\nEnviado em: ${cli.histE1}">🔰</span>`; tD = true; }
+          if (cli.histE2) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="⚠️ Lembrete 5 Dias (Etapa 2)\nEnviado em: ${cli.histE2}">⚠️</span>`; tD = true; }
+          if (cli.histE3) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="⛔ Prazo Expirado (Etapa 3)\nEnviado em: ${cli.histE3}">⛔</span>`; tD = true; }
+          if (!tD) { htmlDisparos += `<span class="text-slate-400 dark:text-slate-500 italic text-[10px] font-medium border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-800">Sem histórico</span>`; } 
+          htmlDisparos += `</div>`;
+
           const isChecked = selectionSet.has(cli.idUnico) ? "checked" : "";
           let fB = cli.isFipeBaixa ? "bg-rose-100 dark:bg-rose-900/40 border-rose-300 dark:border-rose-700/50 text-rose-800 dark:text-rose-400" : "bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200";
           let vD = cli.placa ? cli.placa : (cli.chassi ? cli.chassi : "-"); let fD = formatarMoedaBRL(cli.fipe);
@@ -371,7 +376,6 @@
     function updateSelection(chk) { const val = chk.getAttribute('data-id'); if (chk.checked) selectionSet.add(val); else selectionSet.delete(val); contarChecksGlobais(); }
     function marcarTodosGeral(m) { document.querySelectorAll('.chk-cli:not([disabled])').forEach(c => { c.checked = m.checked; const val = c.getAttribute('data-id'); if (m.checked) selectionSet.add(val); else selectionSet.delete(val); }); contarChecksGlobais(); }
     
-    // [SÊNIOR FIX]: Injecção do Botão Flutuante de Migração
     function contarChecksGlobais() { 
       document.getElementById('contadorSel').innerText = selectionSet.size; 
       
@@ -390,7 +394,6 @@
       }
     }
 
-    // [SÊNIOR FIX]: Funções do Motor de Migração Manual e SLA
     function abrirModalMigracao() {
       const alvos = getAlvosSelecionados();
       if (alvos.length === 0) return aviso("⚠️ Selecione os clientes que deseja migrar.");
@@ -531,16 +534,40 @@
       document.getElementById('footer-modal-preview').innerHTML = `<button onclick="fecharModalPreview()" class="px-8 py-3 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-900 transition shadow-lg w-full md:w-auto">Concluir e Fechar</button>`;
     }
 
+    // [SÊNIOR FIX]: Sintaxe Assíncrona Totalmente Refatorada
     function enviarWhatsIndividual(index) {
-      const p = window.previewsProcessados[index]; if(!p.telefoneLimpo || p.telefoneLimpo.length < 10) return aviso("⚠️ Telefone inválido.");
+      const p = window.previewsProcessados[index]; 
+      if(!p.telefoneLimpo || p.telefoneLimpo.length < 10) return aviso("⚠️ Telefone inválido.");
+      
       window.open(`https://wa.me/${p.telefoneLimpo}?text=${encodeURIComponent(p.whatsText)}`, '_blank');
-      const btn = document.getElementById(`btn-whats-${index}`); btn.innerHTML = `⏳ Marcando...`; btn.disabled = true; btn.classList.replace("bg-emerald-600", "bg-emerald-400");
+      
+      const btn = document.getElementById(`btn-whats-${index}`); 
+      btn.innerHTML = `⏳ Marcando...`; 
+      btn.disabled = true; 
+      btn.classList.replace("bg-emerald-600", "bg-emerald-400");
       
       const isCancelamento = p.etapaNum === "CANCELAMENTO";
-      const funcBackend = isCancelamento ? google.script.run.web_marcarWhatsCancelamentoWeb : google.script.run.marcarWhatsAgrupadoWeb;
+      
+      // Objeto de chamada da API do Google script adequadamente construído
+      const runner = google.script.run
+        .withSuccessHandler(() => { 
+          btn.innerHTML = `✅ Whats Marcado`; 
+          btn.classList.replace("bg-emerald-400", "bg-green-600"); 
+          btn.classList.add("cursor-not-allowed"); 
+        })
+        .withFailureHandler(e => { 
+          btn.innerHTML = `❌ Erro`; 
+          btn.disabled = false; 
+          btn.classList.replace("bg-emerald-400", "bg-red-600"); 
+          aviso("❌ Erro ao marcar: " + e.message);
+        });
 
-      funcBackend.withSuccessHandler(() => { btn.innerHTML = `✅ Whats Marcado`; btn.classList.replace("bg-emerald-400", "bg-green-600"); btn.classList.add("cursor-not-allowed"); })
-      .withFailureHandler(e => { btn.innerHTML = `❌ Erro`; btn.disabled = false; btn.classList.replace("bg-emerald-400", "bg-red-600"); })([window.gruposParaEnvio[index]], window.respParaEnvio);
+      // Disparo Exato
+      if (isCancelamento) {
+        runner.web_marcarWhatsCancelamentoWeb([window.gruposParaEnvio[index]], window.respParaEnvio);
+      } else {
+        runner.marcarWhatsAgrupadoWeb([window.gruposParaEnvio[index]], window.respParaEnvio);
+      }
     }
     
     function marcarLoteSemEnviar() { const alvos = getAlvosSelecionados(); if(alvos.length === 0) return aviso('⚠️ Selecione primeiro.'); const resp = document.getElementById('selectResponsavelFila') ? document.getElementById('selectResponsavelFila').value : "Sistema"; if(!confirm(`Marcar ${alvos.length} como enviados?`)) return; aviso("✔️ Marcando...", 60000); google.script.run.withSuccessHandler(res => { aviso(res, 6000); limparSelecaoAposAcao(); carregarFilaGeral(); }).marcarComoEnviadoWeb(alvos, resp); }
@@ -561,6 +588,24 @@
     }
     
     function rodarFerramentaGlobal(cmd) { aviso("⚙️ Processando...", 120000); google.script.run.withSuccessHandler(res => aviso(res, 8000)).executarFerramentaWebGlobal(cmd); }
+
+    function varrerConcluidosSelecionados() {
+      const alvos = getAlvosSelecionados();
+      if(alvos.length === 0) return aviso('⚠️ Selecione primeiro os clientes que deseja verificar.');
+      
+      aviso("⏳ A verificar o status dos clientes selecionados na API Hinova...", 60000);
+      
+      google.script.run
+        .withSuccessHandler(function(mensagem) {
+          aviso(mensagem, 8000);
+          limparSelecaoAposAcao();
+          carregarFilaGeral();
+        })
+        .withFailureHandler(function(erro) {
+          aviso("❌ Erro na varredura seletiva: " + erro.message, 8000);
+        })
+        .varrerConcluidosSelecionadosWeb(alvos);
+    }
 
     // =======================================================================
     // IMPORTAÇÃO DE LOTES (SGA HINOVA)
