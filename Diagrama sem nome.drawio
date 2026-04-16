@@ -1,0 +1,106 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Página-1" id="iu5oqNpw8X_X7V9v_RZn">
+    <mxGraphModel dx="905" dy="1623" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="g_Vo4BT802kf09VdNeQ--10" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=1;exitDx=0;exitDy=0;" target="g_Vo4BT802kf09VdNeQ--11">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="390" y="60" />
+            </Array>
+            <mxPoint x="250" y="120" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3c800;fontColor=#000000;strokeColor=#B09500;" value="Controle de Serviços&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="330" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--13" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0;entryDx=65;entryDy=15;entryPerimeter=0;" target="g_Vo4BT802kf09VdNeQ--19">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="260" y="157.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--15" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;" target="g_Vo4BT802kf09VdNeQ--16">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="220" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--27" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="g_Vo4BT802kf09VdNeQ--28">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="550" y="150" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--11" parent="1" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;fontColor=#ffffff;strokeColor=#2D7600;" value="Planilha ativa (Mês Vigente)" vertex="1">
+          <mxGeometry height="60" width="100" x="340" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--17" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.88;entryY=0.25;entryDx=0;entryDy=0;entryPerimeter=0;" target="g_Vo4BT802kf09VdNeQ--20">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="250" y="300" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--21" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="g_Vo4BT802kf09VdNeQ--22">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="340" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--23" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="g_Vo4BT802kf09VdNeQ--24">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="150" y="255" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--25" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=1;exitDx=0;exitDy=0;" target="g_Vo4BT802kf09VdNeQ--26">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="333" y="401" />
+              <mxPoint x="250" y="401" />
+              <mxPoint x="250" y="512" />
+              <mxPoint x="150" y="512" />
+              <mxPoint x="150" y="490" />
+            </Array>
+            <mxPoint x="150" y="460" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--16" parent="1" style="rhombus;whiteSpace=wrap;html=1;" value="Integrações&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="70" x="280" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--19" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;" value="controle geral.xlsx" vertex="1">
+          <mxGeometry height="100" width="80" x="130" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--20" parent="1" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" value="Telegram&lt;br&gt;(emissão de OS)" vertex="1">
+          <mxGeometry height="70" width="130" x="50" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--22" parent="1" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" value="SGCW" vertex="1">
+          <mxGeometry height="60" width="100" x="140" y="360" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--24" parent="1" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" value="SGA (Hinova)" vertex="1">
+          <mxGeometry height="65" width="130" x="30" y="215" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--26" parent="1" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" value="Rede Veículos" vertex="1">
+          <mxGeometry height="80" width="120" x="90" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--31" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" target="g_Vo4BT802kf09VdNeQ--32">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="655" y="70" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--28" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Planilha&lt;br&gt;de Logs&lt;div&gt;(Meses Anteriores)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="150" x="580" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--30" parent="1" style="shape=callout;whiteSpace=wrap;html=1;perimeter=calloutPerimeter;" value="Se iniciar novo mês" vertex="1">
+          <mxGeometry height="60" width="110" x="460" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--33" edge="1" parent="1" source="g_Vo4BT802kf09VdNeQ--32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0;exitDx=22.5;exitDy=0;exitPerimeter=0;" target="g_Vo4BT802kf09VdNeQ--34">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="638" y="-50" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--32" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;" value="historico controle.xlsx" vertex="1">
+          <mxGeometry height="100" width="75" x="615" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="g_Vo4BT802kf09VdNeQ--34" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Abas nos formatos&lt;br&gt;dd/mm;yyyy" vertex="1">
+          <mxGeometry height="60" width="120" x="610" y="-150" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
