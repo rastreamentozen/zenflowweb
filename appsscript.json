@@ -4,10 +4,14 @@
     "enabledAdvancedServices": [
       {
         "userSymbol": "Gmail",
-        "version": "v1",
-        "serviceId": "gmail"
+        "serviceId": "gmail",
+        "version": "v1"
       }
     ]
+  },
+  "webapp": {
+    "executeAs": "USER_DEPLOYING",
+    "access": "ANYONE"
   },
   "exceptionLogging": "STACKDRIVER",
   "oauthScopes": [
@@ -17,9 +21,5 @@
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/presentations"
   ],
-  "runtimeVersion": "V8",
-  "webapp": {
-    "executeAs": "USER_DEPLOYING",
-    "access": "ANYONE"
-  }
+  "runtimeVersion": "V8"
 }
