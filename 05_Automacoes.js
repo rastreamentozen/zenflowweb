@@ -10,18 +10,55 @@ function processarItemLoteWeb(cli, comando) {
   const aba = ss.getSheetByName(cli.abaNome);
   if (!aba) return { status: 'erro', msg: 'Aba não encontrada.' };
   
-  const vb = cli.chassi || cli.placa;
+  const vb = String(cli.chassi || cli.placa).replace(/[^A-Za-z0-9]/g, '');
   const pb = cli.chassi ? "chassi" : "placa";
   const linha = cli.linhaOriginal;
   const dt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm");
   const codMoto = ["3", "126", "115", "100", "105", "127", "116", "32", "33", "34", "35", "95", "96", "97"];
   
-  // Opções padrão para chamadas GET na Hinova
   const optionsGet = { 
     "method": "get", 
     "headers": { "Authorization": "Bearer " + token, "Content-Type": "application/json" }, 
     "muteHttpExceptions": true 
   };
+
+  // [SÊNIOR FIX]: Ferramentas Implacáveis de Extração de Endereço
+  function buscarViaCep(cepStr) {
+    if (!cepStr) return null;
+    const c = String(cepStr).replace(/\D/g, '');
+    if (c.length === 8) {
+      try {
+        const r = UrlFetchApp.fetch(`https://viacep.com.br/ws/${c}/json/`, { muteHttpExceptions: true });
+        if (r.getResponseCode() === 200) {
+          const j = JSON.parse(r.getContentText());
+          if (!j.erro) return { estado: j.uf, cidade: j.localidade, bairro: j.bairro };
+        }
+      } catch(e) {}
+    }
+    return null;
+  }
+
+  function extrairEndereco(obj) {
+    if (!obj || typeof obj !== 'object') return { cep: "", uf: "", cid: "", bai: "" };
+    let cep = obj.cep || obj.cep_residencial || obj.cep_comercial || "";
+    let uf = obj.estado || obj.uf || obj.estado_residencial || obj.uf_residencial || "";
+    let cid = obj.cidade || obj.cidade_residencial || obj.localidade || "";
+    let bai = obj.bairro || obj.bairro_residencial || "";
+    
+    if (Array.isArray(obj.enderecos) && obj.enderecos.length > 0) {
+      let e = obj.enderecos[0];
+      cep = cep || e.cep; uf = uf || e.estado || e.uf; cid = cid || e.cidade; bai = bai || e.bairro;
+    }
+    if (Array.isArray(obj.endereco) && obj.endereco.length > 0) {
+      let e = obj.endereco[0];
+      cep = cep || e.cep; uf = uf || e.estado || e.uf; cid = cid || e.cidade; bai = bai || e.bairro;
+    }
+    if (obj.endereco && typeof obj.endereco === 'object' && !Array.isArray(obj.endereco)) {
+      let e = obj.endereco;
+      cep = cep || e.cep; uf = uf || e.estado || e.uf; cid = cid || e.cidade; bai = bai || e.bairro;
+    }
+    return { cep: cep, uf: uf, cid: cid, bai: bai };
+  }
 
   try {
     // --------------------------------------------------------------------------------
@@ -42,11 +79,10 @@ function processarItemLoteWeb(cli, comando) {
         if (bMatch) bairroCli = bMatch[1].trim();
       }
 
-      // Se não tem endereço nas notas, tenta buscar AGORA na Hinova (Auto-Correção)
       if (!cidadeCli || !est || est === "N/A" || est === "") {
-          const resLocal = processarItemLoteWeb(cli, "estados"); // Chama a si mesmo para preencher o local
+          const resLocal = processarItemLoteWeb(cli, "estados"); 
           if (resLocal.status === 'ok') {
-            return processarItemLoteWeb(cli, "logistica"); // Recomeça agora que tem endereço
+            return processarItemLoteWeb(cli, "logistica"); 
           }
       }
 
@@ -94,94 +130,133 @@ function processarItemLoteWeb(cli, comando) {
     // --------------------------------------------------------------------------------
     // 2. BUSCA DE DADOS NA HINOVA (VEÍCULO -> ASSOCIADO)
     // --------------------------------------------------------------------------------
-    const resp = UrlFetchApp.fetch(`${SGA_CONFIG.URL_CONSULTA_BASE}${encodeURIComponent(vb)}/${pb}`, optionsGet);
+    const resp = UrlFetchApp.fetch(`${SGA_CONFIG.URL_CONSULTA_BASE}${vb}/${pb}`, optionsGet);
     
-    if (resp.getResponseCode() === 200) {
-      const jsonRaw = JSON.parse(resp.getContentText());
-      // [SÊNIOR FIX]: Suporte a Objeto direto ou Array (Garante leitura de clientes novos)
-      const v = Array.isArray(jsonRaw) ? jsonRaw[0] : jsonRaw;
-      if (!v || Object.keys(v).length === 0) return { status: 'ignorado', msg: 'Sem dados na Hinova' };
+    // Alerta de API fora do ar ou negando resposta
+    if (resp.getResponseCode() !== 200) {
+      aba.getRange(linha, MAPA_COLUNAS.NOME + 1).setNote(`⚠️ Falha na rede SGA.\nStatus HTTP: ${resp.getResponseCode()}\nTentado: ${pb.toUpperCase()} = ${vb}`);
+      return { status: 'ignorado', msg: `Erro HTTP ${resp.getResponseCode()}` };
+    }
 
-      let alterado = false;
+    const jsonRaw = JSON.parse(resp.getContentText());
+    const v = Array.isArray(jsonRaw) ? jsonRaw[0] : jsonRaw;
+    
+    // Alerta de Veículo ainda não existente na Base Hinova no momento da execução
+    if (!v || Object.keys(v).length === 0) {
+      aba.getRange(linha, MAPA_COLUNAS.NOME + 1).setNote(`⚠️ Veículo não localizado na API da Hinova.\nTentado: ${pb.toUpperCase()} = ${vb}\n(Pode ser atraso de integração do SGA).`);
+      return { status: 'ignorado', msg: 'Sem dados na Hinova' };
+    }
 
-      // --- AUTOMAÇÃO: LOCALIZAÇÃO (ESTADOS) - ESPELHADA DO SHEETS ---
-      if (comando === "estados") {
-        let estFinal = "N/A", cidFinal = "Não informada", baiFinal = "Não informado";
-        
-        if (v.codigo_associado) {
-          const rA = UrlFetchApp.fetch(`https://api.hinova.com.br/api/sga/v2/associado/buscar/${v.codigo_associado}/codigo`, optionsGet);
+    let alterado = false;
+
+    // --- AUTOMAÇÃO: LOCALIZAÇÃO (ESTADOS) ---
+    if (comando === "estados") {
+      let estFinal = "N/A", cidFinal = "Não informada", baiFinal = "Não informado";
+      
+      // Tentativa 1: Varredura profunda no próprio objeto do Veículo
+      let endVeiculo = extrairEndereco(v);
+      
+      // Fallback ViaCEP se a Hinova só entregou o CEP
+      if (endVeiculo.cep) {
+        let vCep = buscarViaCep(endVeiculo.cep);
+        if (vCep) { endVeiculo.uf = vCep.estado; endVeiculo.cid = vCep.cidade; endVeiculo.bai = vCep.bairro; }
+      }
+
+      if (endVeiculo.uf && endVeiculo.cid) {
+        estFinal = String(endVeiculo.uf).trim().toUpperCase();
+        cidFinal = String(endVeiculo.cid).trim();
+        baiFinal = String(endVeiculo.bai || "Não informado").trim();
+      } else {
+        // Tentativa 2: Buscar pelo Associado usando qualquer chave disponível
+        let rotaBusca = "";
+        if (v.codigo_associado && v.codigo_associado !== "0") rotaBusca = `${v.codigo_associado}/codigo`;
+        else if (v.cpf_associado) rotaBusca = `${String(v.cpf_associado).replace(/\D/g, '')}/cpf`;
+        else if (v.cnpj_associado) rotaBusca = `${String(v.cnpj_associado).replace(/\D/g, '')}/cnpj`;
+
+        if (rotaBusca) {
+          const rA = UrlFetchApp.fetch(`https://api.hinova.com.br/api/sga/v2/associado/buscar/${rotaBusca}`, optionsGet);
           if (rA.getResponseCode() === 200) {
             const jA = JSON.parse(rA.getContentText());
             const aD = Array.isArray(jA) ? jA[0] : jA;
             if (aD) {
-              estFinal = (aD.estado || aD.uf || "N/A").toString().trim().toUpperCase();
-              cidFinal = (aD.cidade || "Não informada").toString().trim();
-              baiFinal = (aD.bairro || "Não informado").toString().trim();
+              let endAssoc = extrairEndereco(aD);
+              
+              if (endAssoc.cep) {
+                let aCep = buscarViaCep(endAssoc.cep);
+                if (aCep) { endAssoc.uf = aCep.estado; endAssoc.cid = aCep.cidade; endAssoc.bai = aCep.bairro; }
+              }
+              
+              if (endAssoc.uf) estFinal = String(endAssoc.uf).trim().toUpperCase();
+              if (endAssoc.cid) cidFinal = String(endAssoc.cid).trim();
+              if (endAssoc.bai) baiFinal = String(endAssoc.bai).trim();
             }
           }
         }
-        aba.getRange(linha, MAPA_COLUNAS.ESTADO + 1).setValue(estFinal).setNote(`📍 Cidade: ${cidFinal}\n🏘️ Bairro: ${baiFinal}`);
-        if (estFinal !== "RJ" && estFinal !== "N/A") {
-          aba.getRange(linha, MAPA_COLUNAS.TECNICO_INDISPONIVEL + 1).setValue(true);
-        }
-        alterado = true;
       }
 
-      // --- AUTOMAÇÃO: FIPE BAIXA (PARSER ROBUSTO DO SHEETS) ---
-      else if (comando === "fipe") {
-        let valorFipeNum = 0;
-        let strFipe = String(v.valor_fipe || "").trim();
-        if (strFipe) {
-          if (strFipe.indexOf(',') > -1 && strFipe.indexOf('.') > -1) strFipe = strFipe.replace(/\./g, '').replace(',', '.');
-          else if (strFipe.indexOf(',') > -1) strFipe = strFipe.replace(',', '.');
-          else if (strFipe.indexOf('.') > -1) { if (strFipe.split('.').pop().length === 3) strFipe = strFipe.replace(/\./g, ''); }
-          valorFipeNum = parseFloat(strFipe.replace(/[^\d.-]/g, '')) || 0;
-        }
-
-        if (strFipe) aba.getRange(linha, MAPA_COLUNAS.FIPE + 1).setValue(v.valor_fipe);
-        const isMoto = codMoto.indexOf(String(v.codigo_tipo_veiculo)) > -1;
-        const isBaixa = (isMoto && valorFipeNum > 0 && valorFipeNum < 20000) || (!isMoto && valorFipeNum > 0 && valorFipeNum < 30000);
-        
-        aba.getRange(linha, MAPA_COLUNAS.FIPE_BAIXA + 1).setValue(isBaixa);
-        alterado = true;
+      aba.getRange(linha, MAPA_COLUNAS.ESTADO + 1).setValue(estFinal).setNote(`📍 Cidade: ${cidFinal}\n🏘️ Bairro: ${baiFinal}`);
+      if (estFinal !== "RJ" && estFinal !== "N/A") {
+        aba.getRange(linha, MAPA_COLUNAS.TECNICO_INDISPONIVEL + 1).setValue(true);
       }
-
-      // --- DEMAIS AUTOMAÇÕES ---
-      else if (comando === "motos") {
-        if (codMoto.includes(String(v.codigo_tipo_veiculo))) {
-          aba.getRange(linha, 1, 1, aba.getLastColumn()).setBackground("#d1fae5");
-          aba.getRange(linha, MAPA_COLUNAS.PLACA + 1).setNote("🏍️ MOTO (SGA)");
-          alterado = true;
-        } else {
-          aba.getRange(linha, 1, 1, aba.getLastColumn()).setBackground(null);
-          aba.getRange(linha, MAPA_COLUNAS.PLACA + 1).clearNote();
-        }
-      } 
-      else if (comando === "inativos") {
-        const cSit = String(v.codigo_situacao), cClass = String(v.codigo_classificacao || ""), cNome = aba.getRange(linha, MAPA_COLUNAS.NOME + 1);
-        if (cClass === "1") {
-          cNome.setFontColor("#16a34a").setFontWeight("bold").setNote(`✅ CONCLUÍDO SGA em: ${dt}`);
-        } else if (cSit !== "1" && cSit !== "14") {
-          cNome.setFontColor("#9C27B0").setFontWeight("bold").setNote(`⚠️ Situação SGA: ${MAPA_SITUACAO_SGA[cSit] || "Desconhecida"}\nVerificado: ${dt}`);
-        } else {
-          cNome.setFontColor("#000000").setFontWeight("normal").clearNote();
-        }
-        alterado = true;
-      }
-      else if (comando === "completar") {
-        if (!cli.nome && v.nome) { aba.getRange(linha, MAPA_COLUNAS.NOME + 1).setValue(String(v.nome).toUpperCase()); alterado = true; }
-        if (!cli.email && v.email) { aba.getRange(linha, MAPA_COLUNAS.EMAIL + 1).setValue(String(v.email).toLowerCase()); alterado = true; }
-        if (!cli.telefone) {
-          let fT = v.ddd_celular && v.telefone_celular ? `(${v.ddd_celular}) ${v.telefone_celular}` : (v.telefone_celular || "");
-          if (fT) { aba.getRange(linha, MAPA_COLUNAS.TELEFONE + 1).setValue(fT); alterado = true; }
-        }
-      }
-
-      if (alterado) SpreadsheetApp.flush();
-      return { status: 'ok', msg: 'Processado' };
+      alterado = true;
     }
-    return { status: 'ignorado', msg: 'Erro de resposta API' };
-  } catch (e) { return { status: 'erro', msg: e.message }; }
+
+    // --- AUTOMAÇÃO: FIPE BAIXA ---
+    else if (comando === "fipe") {
+      let valorFipeNum = 0;
+      let strFipe = String(v.valor_fipe || "").trim();
+      if (strFipe) {
+        if (strFipe.indexOf(',') > -1 && strFipe.indexOf('.') > -1) strFipe = strFipe.replace(/\./g, '').replace(',', '.');
+        else if (strFipe.indexOf(',') > -1) strFipe = strFipe.replace(',', '.');
+        else if (strFipe.indexOf('.') > -1) { if (strFipe.split('.').pop().length === 3) strFipe = strFipe.replace(/\./g, ''); }
+        valorFipeNum = parseFloat(strFipe.replace(/[^\d.-]/g, '')) || 0;
+      }
+
+      if (strFipe) aba.getRange(linha, MAPA_COLUNAS.FIPE + 1).setValue(v.valor_fipe);
+      const isMoto = codMoto.indexOf(String(v.codigo_tipo_veiculo)) > -1;
+      const isBaixa = (isMoto && valorFipeNum > 0 && valorFipeNum < 20000) || (!isMoto && valorFipeNum > 0 && valorFipeNum < 30000);
+      
+      aba.getRange(linha, MAPA_COLUNAS.FIPE_BAIXA + 1).setValue(isBaixa);
+      alterado = true;
+    }
+
+    // --- DEMAIS AUTOMAÇÕES ---
+    else if (comando === "motos") {
+      if (codMoto.includes(String(v.codigo_tipo_veiculo))) {
+        aba.getRange(linha, 1, 1, aba.getLastColumn()).setBackground("#d1fae5");
+        aba.getRange(linha, MAPA_COLUNAS.PLACA + 1).setNote("🏍️ MOTO (SGA)");
+        alterado = true;
+      } else {
+        aba.getRange(linha, 1, 1, aba.getLastColumn()).setBackground(null);
+        aba.getRange(linha, MAPA_COLUNAS.PLACA + 1).clearNote();
+      }
+    } 
+    else if (comando === "inativos") {
+      const cSit = String(v.codigo_situacao), cClass = String(v.codigo_classificacao || ""), cNome = aba.getRange(linha, MAPA_COLUNAS.NOME + 1);
+      if (cClass === "1") {
+        cNome.setFontColor("#16a34a").setFontWeight("bold").setNote(`✅ CONCLUÍDO SGA em: ${dt}`);
+      } else if (cSit !== "1" && cSit !== "14") {
+        cNome.setFontColor("#9C27B0").setFontWeight("bold").setNote(`⚠️ Situação SGA: ${MAPA_SITUACAO_SGA[cSit] || "Desconhecida"}\nVerificado: ${dt}`);
+      } else {
+        cNome.setFontColor("#000000").setFontWeight("normal").clearNote();
+      }
+      alterado = true;
+    }
+    else if (comando === "completar") {
+      if (!cli.nome && v.nome) { aba.getRange(linha, MAPA_COLUNAS.NOME + 1).setValue(String(v.nome).toUpperCase()); alterado = true; }
+      if (!cli.email && v.email) { aba.getRange(linha, MAPA_COLUNAS.EMAIL + 1).setValue(String(v.email).toLowerCase()); alterado = true; }
+      if (!cli.telefone) {
+        let fT = v.ddd_celular && v.telefone_celular ? `(${v.ddd_celular}) ${v.telefone_celular}` : (v.telefone_celular || "");
+        if (fT) { aba.getRange(linha, MAPA_COLUNAS.TELEFONE + 1).setValue(fT); alterado = true; }
+      }
+    }
+
+    if (alterado) SpreadsheetApp.flush();
+    return { status: 'ok', msg: 'Processado' };
+    
+  } catch (e) { 
+    return { status: 'erro', msg: e.message }; 
+  }
 }
 
 // ====================================================================================

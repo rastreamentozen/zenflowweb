@@ -9,16 +9,11 @@ function cadastrarLoteWeb(loteDeClientes) {
     const aba3 = ss.getSheets().find(s => s.getName().includes("3 -"));
     
     if (!aba1 || !aba2 || !aba3) return "❌ Erro: Abas de operação não encontradas.";
-    
-    let feriadosTime = [];
-    const abaFeriados = ss.getSheetByName("Feriados");
-    if (abaFeriados) {
-      feriadosTime = abaFeriados.getRange("A2:A").getValues().map(r => r[0] instanceof Date ? r[0].getTime() : null).filter(r => r);
-    }
 
     const chassisNoSistema = new Set();
     const placasNoSistema = new Set();
     
+    // Mapear existentes nas abas principais
     ss.getSheets().filter(s => s.getName().includes("1 -") || s.getName().includes("2 -") || s.getName().includes("3 -") || s.getName().includes("4 -")).forEach(aba => {
       const dados = aba.getDataRange().getValues();
       for (let i = 1; i < dados.length; i++) {
@@ -27,6 +22,7 @@ function cadastrarLoteWeb(loteDeClientes) {
       }
     });
 
+    // Mapear existentes na Auditoria
     const abasAuditoria = ss.getSheets().filter(s => {
       const nomeAba = s.getName().toLowerCase().trim();
       return nomeAba === "log concluídos" || nomeAba.includes("auditoria");
@@ -62,57 +58,27 @@ function cadastrarLoteWeb(loteDeClientes) {
       }
     });
     
-    const token = autenticarHINOVA();
-    if (!token) return "❌ Erro: Falha na autenticação com a Hinova.";
-    
-    const baseUrl = SGA_CONFIG.URL_CONSULTA_BASE.endsWith('/') ? SGA_CONFIG.URL_CONSULTA_BASE : SGA_CONFIG.URL_CONSULTA_BASE + '/';
-    
-    const requests = loteDeClientes.map(cli => {
-      const vb = cli.chassi || cli.placa;
-      const pb = cli.chassi ? "chassi" : "placa";
-      return { url: `${baseUrl}${encodeURIComponent(vb)}/${pb}`, method: "get", headers: { "Authorization": "Bearer " + token }, muteHttpExceptions: true };
-    });
-    
-    const responses = [];
-    const TAMANHO_LOTE = 20;
-    
-    for (let i = 0; i < requests.length; i += TAMANHO_LOTE) {
-      const pedacoRequests = requests.slice(i, i + TAMANHO_LOTE);
-      const respostasPedaco = UrlFetchApp.fetchAll(pedacoRequests);
-      responses.push(...respostasPedaco);
-      if (i + TAMANHO_LOTE < requests.length) {
-        Utilities.sleep(1000); 
-      }
-    }
-    
     const qtdColunasParaInserir = Math.max(aba1.getLastColumn(), 20) - 1;
     const dtHoje = new Date();
     const dtHojeStr = Utilities.formatDate(dtHoje, Session.getScriptTimeZone(), "dd/MM/yyyy");
     
-    let contInseridos = 0, contDuplicados = 0, contIgnoradosStatus = 0;
-    const lotesPorAba = { 1: [], 2: [], 3: [] };
+    let contInseridos = 0, contDuplicados = 0;
+    const lotesPorAba = { 1: [] };
+    const notasPorAba = { 1: [] }; // Suporte a Notas Nativas
     
-    loteDeClientes.forEach((cliente, index) => {
+    loteDeClientes.forEach((cliente) => {
       const chassiCli = String(cliente.chassi || "").trim().toUpperCase();
       const placaCli = String(cliente.placa || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
       
-      if ((chassiCli && chassisNoSistema.has(chassiCli)) || (placaCli && placasNoSistema.has(placaCli))) { contDuplicados++; return; }
-
-      let isCod14 = false;
-      try {
-        if (responses[index].getResponseCode() === 200) {
-          const j = JSON.parse(responses[index].getContentText());
-          const arrayDados = Array.isArray(j) ? j : [j]; 
-          const veiculoValido = arrayDados.find(v => v && String(v.codigo_classificacao).trim() === "14");
-          if (veiculoValido) isCod14 = true;
-        }
-      } catch (e) { }
-
-      if (!isCod14) { contIgnoradosStatus++; return; }
-
-      let etapaAlvo = 1;
+      // Valida se já existe na base
+      if ((chassiCli && chassisNoSistema.has(chassiCli)) || (placaCli && placasNoSistema.has(placaCli))) { 
+        contDuplicados++; 
+        return; 
+      }
 
       const novaLinha = new Array(qtdColunasParaInserir).fill("");
+      const novaNota = new Array(qtdColunasParaInserir).fill("");
+      
       novaLinha[0] = cliente.data || dtHojeStr;
       novaLinha[MAPA_COLUNAS.NOME - 1] = String(cliente.nome || "").trim().toUpperCase();
       novaLinha[MAPA_COLUNAS.PLACA - 1] = placaCli;
@@ -121,30 +87,38 @@ function cadastrarLoteWeb(loteDeClientes) {
       novaLinha[MAPA_COLUNAS.EMAIL - 1] = String(cliente.email || "").trim().toLowerCase();
       novaLinha[MAPA_COLUNAS.TELEFONE - 1] = String(cliente.telefone || "").trim();
       
-      lotesPorAba[etapaAlvo].push(novaLinha);
+      // Injeção Direta do Endereço Importado
+      if (cliente.estado) {
+         novaLinha[MAPA_COLUNAS.ESTADO - 1] = String(cliente.estado).trim().toUpperCase();
+         let cid = cliente.cidade ? String(cliente.cidade).trim() : "Não informada";
+         let bai = cliente.bairro ? String(cliente.bairro).trim() : "Não informado";
+         novaNota[MAPA_COLUNAS.ESTADO - 1] = `📍 Cidade: ${cid}\n🏘️ Bairro: ${bai}`;
+      }
+      
+      lotesPorAba[1].push(novaLinha);
+      notasPorAba[1].push(novaNota);
       contInseridos++;
       
       if (chassiCli) chassisNoSistema.add(chassiCli);
       if (placaCli) placasNoSistema.add(placaCli);
     });
     
-    const inserirNaAba = (aba, matriz) => {
+    const inserirNaAba = (aba, matriz, matrizNotas) => {
       if (matriz.length === 0) return;
       const nomes = aba.getRange("C1:C").getValues();
       let ultimaLinhaReal = 1;
       for (let j = nomes.length - 1; j >= 0; j--) {
         if (String(nomes[j][0]).trim() !== "") { ultimaLinhaReal = j + 1; break; }
       }
-      aba.getRange(ultimaLinhaReal + 1, 2, matriz.length, qtdColunasParaInserir).setValues(matriz);
+      const range = aba.getRange(ultimaLinhaReal + 1, 2, matriz.length, qtdColunasParaInserir);
+      range.setValues(matriz);
+      range.setNotes(matrizNotas); // Aplica as notas em massa simultaneamente
     };
     
-    inserirNaAba(aba1, lotesPorAba[1]); 
-    inserirNaAba(aba2, lotesPorAba[2]); 
-    inserirNaAba(aba3, lotesPorAba[3]);
+    inserirNaAba(aba1, lotesPorAba[1], notasPorAba[1]); 
 
-    let msg = `✅ Lote Processado com Sucesso!\n📥 ${contInseridos} roteados obrigatoriamente para a Etapa 1.`;
-    if (contDuplicados > 0) msg += `\n⚠️ ${contDuplicados} já existiam na Fila ou na Auditoria.`;
-    if (contIgnoradosStatus > 0) msg += `\n🚫 ${contIgnoradosStatus} barrados (Fora do Cód. 14 SGA).`;
+    let msg = `✅ Lote Processado com Sucesso!\n📥 ${contInseridos} roteados para a Etapa 1.`;
+    if (contDuplicados > 0) msg += `\n⚠️ ${contDuplicados} ignorados (já existiam na Fila ou na Auditoria).`;
     return msg;
   } catch (e) { 
     return "❌ Erro Crítico no Motor de Lote: " + e.message;
@@ -165,10 +139,8 @@ function web_obterFilaGeral() {
     }
   } catch(e) {}
   
-  // [SÊNIOR FIX]: Dicionário HashMap para capturar a Auditoria em Memória
   const mapHist = {};
   try {
-    // Escaneia abas de auditoria que registram as ações de disparo
     const abasAud = ss.getSheets().filter(s => s.getName().includes("4 -") || s.getName().toLowerCase().includes("auditoria"));
     
     abasAud.forEach(abaAud => {
@@ -341,12 +313,9 @@ function web_obterFilaGeral() {
       const isEnviadoBol = (l[MAPA_COLUNAS.CHECK_EMAIL] === true || l[MAPA_COLUNAS.CHECK_EMAIL] === "TRUE" || l[MAPA_COLUNAS.CHECK_EMAIL] === 1);
       const isWhatsEnviadoBol = (l[MAPA_COLUNAS.CHECK_WHATS] === true || l[MAPA_COLUNAS.CHECK_WHATS] === "TRUE" || l[MAPA_COLUNAS.CHECK_WHATS] === 1);
       
-      // [SÊNIOR FIX]: Cruzamento de Histórico para a linha Atual
       const keyBusca = placa.replace(/[^A-Z0-9]/g, '') || chassi.toUpperCase();
       const hist = mapHist[keyBusca] ? { ...mapHist[keyBusca] } : { e1: "", e2: "", e3: "" };
 
-      // Caso a auditoria da etapa corrente não tenha sido capturada no HashMap, 
-      // usa o dado local da linha da etapa atual como Fallback.
       let dataCurrentStr = "";
       if (dEmail && !isNaN(dEmail)) dataCurrentStr = Utilities.formatDate(dEmail, Session.getScriptTimeZone(), "dd/MM/yyyy");
       else if (valDataEmail && valDataEmail !== "Aguardando...") dataCurrentStr = String(valDataEmail).split(" ")[0];
