@@ -1,0 +1,611 @@
+<script>
+    console.log("🟢 [ZENFLOW] Módulo JS_FilaUnificada carregado.");
+
+    // =======================================================================
+    // NAVEGAÇÃO E PROTEÇÃO DA FILA
+    // =======================================================================
+    function navegarFila(btnElement) { 
+        const elFila = document.getElementById('filtroFila');
+        if (elFila) elFila.value = "pendentes"; 
+        
+        const elEtapa = document.getElementById('filtroEtapa');
+        if (elEtapa) elEtapa.value = "todas"; 
+        
+        const elTrava = document.getElementById('filtroTrava');
+        if (elTrava) elTrava.value = "todos"; 
+        
+        colunaOrdenacao = 'etapaNum'; 
+        ordemAscendente = true; 
+        selectionSet.clear(); 
+        
+        if (typeof contarChecksGlobais === 'function') contarChecksGlobais(); 
+        if (typeof navegar === 'function') navegar('tela-etapa', btnElement); 
+        
+        carregarFilaGeral(); 
+    }
+
+    // =======================================================================
+    // CARREGAMENTO E FILTROS DA FILA UNIFICADA
+    // =======================================================================
+    function carregarFilaGeral() {
+        const loading = document.getElementById('loading-fila');
+        const tabela = document.getElementById('tabela-fila');
+        const pagBox = document.getElementById('paginacaoBox');
+        
+        if(loading) loading.classList.remove('hidden'); 
+        if(tabela) tabela.classList.add('hidden'); 
+        if(pagBox) pagBox.classList.add('hidden');
+        
+        google.script.run
+            .withSuccessHandler(dados => { 
+                if(loading) loading.classList.add('hidden'); 
+                if (dados && dados.erro) { 
+                    aviso("❌ " + dados.erro, 10000); 
+                    return; 
+                } 
+                cacheFilaBase = dados; 
+                aplicarFiltrosEOrdenacao(); 
+            })
+            .withFailureHandler(erro => { 
+                if(loading) loading.classList.add('hidden'); 
+                aviso("❌ Erro Crítico: " + erro.message, 10000); 
+            })
+            .solicitarDadosWeb('filaGeral');
+    }
+
+    function setSort(coluna) { 
+        if (colunaOrdenacao === coluna) {
+            ordemAscendente = !ordemAscendente; 
+        } else { 
+            colunaOrdenacao = coluna; 
+            ordemAscendente = true; 
+        } 
+        
+        document.querySelectorAll('.sort-icon').forEach(icon => { 
+            icon.innerHTML = ""; 
+            icon.parentElement.classList.remove('sort-active'); 
+        }); 
+        
+        const ativo = document.getElementById(`sort-${coluna}`); 
+        if(ativo) { 
+            ativo.innerHTML = ordemAscendente ? "▲" : "▼"; 
+            ativo.parentElement.classList.add('sort-active'); 
+        } 
+        aplicarFiltrosEOrdenacao(); 
+    }
+    
+    function aplicarFiltrosEOrdenacao() {
+        const iptFila = document.getElementById('filtroFila');
+        const iptEtapa = document.getElementById('filtroEtapa');
+        const iptTrava = document.getElementById('filtroTrava');
+        
+        const fS = iptFila ? iptFila.value : "pendentes";
+        const fE = iptEtapa ? iptEtapa.value : "todas";
+        const fT = iptTrava ? iptTrava.value : "todos";
+        
+        const iptBusca = document.getElementById('ipt-busca-fila');
+        const termoBusca = iptBusca ? iptBusca.value.toLowerCase().trim() : "";
+        const termoBuscaLimpo = termoBusca.replace(/[^a-z0-9]/g, '');
+
+        cacheFilaFiltrada = cacheFilaBase.filter(c => {
+            if (fE !== "todas" && String(c.etapaNum) !== fE) return false;
+            if (fT === "livres" && c.isTecnicoIndisp) return false;
+            if (fT === "travados" && !c.isTecnicoIndisp) return false;
+            
+            if (fS === "pendentes") { 
+                if (c.isEnviado || c.isErroEmail || c.isInativo) return false; 
+            } else if (fS === "erros") { 
+                if (!c.isErroEmail) return false; 
+            } else if (fS === "inativos") { 
+                if (!c.isInativo) return false; 
+            } else if (fS === "enviados") { 
+                if (!c.isEnviado) return false; 
+            }
+
+            if (termoBusca !== "") {
+               const nomeStr = String(c.nome || "").toLowerCase();
+               const placaLimpa = String(c.placa || "").toLowerCase().replace(/[^a-z0-9]/g, '');
+               const chassiLimpo = String(c.chassi || "").toLowerCase().replace(/[^a-z0-9]/g, '');
+               if (!nomeStr.includes(termoBusca) && !placaLimpa.includes(termoBuscaLimpo) && !chassiLimpo.includes(termoBuscaLimpo)) {
+                   return false;
+               }
+            }
+            return true;
+        });
+
+        cacheFilaFiltrada.sort((a, b) => { 
+            let tA = (typeof getTimestamp === 'function') ? getTimestamp(a.dataPlanilha) : 0;
+            let tB = (typeof getTimestamp === 'function') ? getTimestamp(b.dataPlanilha) : 0;
+            
+            if (colunaOrdenacao === 'dataPlanilha') return ordemAscendente ? tA - tB : tB - tA; 
+            if (colunaOrdenacao === 'etapaNum') return ordemAscendente ? a.etapaNum - b.etapaNum : b.etapaNum - a.etapaNum; 
+            
+            let valA = (a[colunaOrdenacao] || "").toString().toLowerCase();
+            let valB = (b[colunaOrdenacao] || "").toString().toLowerCase(); 
+            
+            if (valA < valB) return ordemAscendente ? -1 : 1; 
+            if (valA > valB) return ordemAscendente ? 1 : -1; 
+            return 0; 
+        });
+        
+        currentPage = 1; 
+        desenharTabelaFila();
+    }
+
+    // =======================================================================
+    // PAGINAÇÃO
+    // =======================================================================
+    function mudarPaginacao() { 
+        const el = document.getElementById('selectRowsPerPage'); 
+        if(el) rowsPerPage = el.value; 
+        currentPage = 1; 
+        desenharTabelaFila(); 
+    }
+    
+    function prevPage() { 
+        if (currentPage > 1) { 
+            currentPage--; 
+            desenharTabelaFila(); 
+        } 
+    }
+    
+    function nextPage() { 
+        const limit = rowsPerPage === 'todos' ? cacheFilaFiltrada.length : parseInt(rowsPerPage); 
+        if (currentPage * limit < cacheFilaFiltrada.length) { 
+            currentPage++; 
+            desenharTabelaFila(); 
+        } 
+    }
+    
+    function atualizarBoxPaginacao(s, e, t) { 
+        const b = document.getElementById('paginacaoBox'); 
+        if(!b) return; 
+        b.classList.remove('hidden'); 
+        
+        const pInfo = document.getElementById('pageInfo');
+        if(pInfo) pInfo.innerText = `Mostrando ${t === 0 ? 0 : s + 1} a ${e} de ${t}`; 
+        
+        const btnPrev = document.getElementById('btnPrev');
+        if(btnPrev) btnPrev.disabled = currentPage === 1; 
+        
+        const l = rowsPerPage === 'todos' ? t : parseInt(rowsPerPage); 
+        const btnNext = document.getElementById('btnNext');
+        if(btnNext) btnNext.disabled = currentPage * l >= t; 
+    }
+
+    // =======================================================================
+    // TOGGLES E EDIÇÃO INDIVIDUAL
+    // =======================================================================
+    function criarToggle(campo, idUnico, chk, cor) { 
+        return `<div class="relative inline-block w-10 align-middle transition print:hidden">
+                    <input type="checkbox" onchange="salvarMarcacao('${idUnico}', '${campo}', this.checked)" ${chk ? "checked" : ""} class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-2 cursor-pointer"/>
+                    <label class="toggle-label block h-5 rounded-full ${chk ? cor : 'bg-slate-300'} cursor-pointer"></label>
+                </div>
+                <span class="hidden print:inline-block font-bold">${chk ? 'SIM' : 'NÃO'}</span>`; 
+    }
+
+    function salvarMarcacao(idUnico, campo, valorBooleano) {
+        const lastDash = idUnico.lastIndexOf('-'); 
+        if (lastDash === -1) return; 
+        
+        const abaNome = idUnico.substring(0, lastDash);
+        const linha = parseInt(idUnico.substring(lastDash + 1));
+        const cli = cacheFilaBase.find(c => c.idUnico === idUnico); 
+        
+        if (cli) { 
+            if (campo === 'fipeBaixa') cli.isFipeBaixa = valorBooleano; 
+            if (campo === 'tecnicoIndisp') cli.isTecnicoIndisp = valorBooleano; 
+            if (campo === 'respEmail') cli.isRespondeuEmail = valorBooleano; 
+            if (campo === 'respWhats') cli.isRespondeuWhats = valorBooleano; 
+        }
+        
+        if (typeof aviso === 'function') aviso("⏳ Sincronizando...", 2000); 
+        google.script.run
+            .withSuccessHandler(res => { 
+                if (typeof aviso === 'function') aviso(res, 3000); 
+                aplicarFiltrosEOrdenacao(); 
+            })
+            .withFailureHandler(err => {
+                if (typeof aviso === 'function') aviso("❌ Erro: " + err.message, 5000);
+            })
+            .atualizarMarcacaoWeb(abaNome, linha, campo, valorBooleano);
+    }
+
+    function abrirModalEdicaoCliente(idUnico) {
+        const cli = cacheFilaBase.find(c => c.idUnico === idUnico); 
+        if(!cli) return;
+        
+        document.getElementById('ipt-edit-idUnico').value = idUnico; 
+        document.getElementById('ipt-edit-nome').value = cli.nome || ""; 
+        document.getElementById('ipt-edit-placa').value = cli.placa || ""; 
+        document.getElementById('ipt-edit-chassi').value = cli.chassi || ""; 
+        document.getElementById('ipt-edit-email').value = cli.email || ""; 
+        document.getElementById('ipt-edit-telefone').value = cli.telefone || ""; 
+        document.getElementById('ipt-edit-fipe').value = cli.fipe || ""; 
+        
+        const modal = document.getElementById('modal-edicao-cliente');
+        if(modal) modal.classList.remove('hidden');
+    }
+
+    function fecharModalEdicaoCliente() { 
+        const modal = document.getElementById('modal-edicao-cliente');
+        if(modal) modal.classList.add('hidden'); 
+    }
+
+    function salvarEdicaoCliente() {
+        const idUnico = document.getElementById('ipt-edit-idUnico').value; 
+        const cli = cacheFilaBase.find(c => c.idUnico === idUnico); 
+        if(!cli) return;
+        
+        const payload = { 
+            nome: document.getElementById('ipt-edit-nome').value.trim(), 
+            placa: document.getElementById('ipt-edit-placa').value.trim(), 
+            chassi: document.getElementById('ipt-edit-chassi').value.trim(), 
+            email: document.getElementById('ipt-edit-email').value.trim(), 
+            telefone: document.getElementById('ipt-edit-telefone').value.trim(), 
+            fipe: document.getElementById('ipt-edit-fipe').value.trim() 
+        };
+        
+        const btn = document.getElementById('btn-salvar-edicao-cli'); 
+        if(btn) { btn.innerHTML = "⏳ Salvando..."; btn.disabled = true; }
+        
+        google.script.run
+            .withSuccessHandler(res => { 
+                if (typeof aviso === 'function') aviso(res, 5000); 
+                if(btn) { btn.innerHTML = "💾 Salvar Alterações"; btn.disabled = false; }
+                fecharModalEdicaoCliente(); 
+                carregarFilaGeral(); 
+            })
+            .withFailureHandler(err => { 
+                if (typeof aviso === 'function') aviso("❌ " + err.message); 
+                if(btn) { btn.innerHTML = "💾 Salvar Alterações"; btn.disabled = false; }
+            })
+            .web_atualizarDadosCliente(cli.abaNome, cli.linhaOriginal, payload);
+    }
+
+    // =======================================================================
+    // RENDERIZAÇÃO DA TABELA (BLINDADA CONTRA NULOS)
+    // =======================================================================
+    function desenharTabelaFila() {
+        const chkMaster = document.getElementById('chk-master'); 
+        if (chkMaster) chkMaster.checked = false;
+        
+        const corpo = document.getElementById('corpo-fila'); 
+        if(!corpo) return;
+        
+        corpo.innerHTML = ""; 
+        const total = cacheFilaFiltrada.length;
+        
+        if(total === 0) { 
+            corpo.innerHTML = `<tr><td colspan="11" class="px-6 py-16 text-center text-slate-500 dark:text-slate-400 font-bold text-lg">Nenhum cliente atende a este filtro.</td></tr>`; 
+            const pb = document.getElementById('paginacaoBox'); 
+            if(pb) pb.classList.add('hidden'); 
+        } else {
+            const limit = rowsPerPage === 'todos' ? total : parseInt(rowsPerPage);
+            const start = (currentPage - 1) * limit;
+            const end = Math.min(start + limit, total);
+            const pageData = cacheFilaFiltrada.slice(start, end);
+            
+            pageData.forEach((cli) => {
+                let cNC = "text-slate-800 dark:text-slate-100", ab = "";
+                
+                // Conversão segura para Strings (Impede crash fatal se a planilha vier com células vazias)
+                const strNota = String(cli.notaNome || "");
+                const strNotaEmail = String(cli.notaEmail || "");
+                
+                if (cli.isInativo) { 
+                    cNC = "text-purple-600 dark:text-purple-400 font-black"; 
+                    ab = `<span class="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 px-2 py-1 rounded text-[10px] font-bold mr-1 print:border" title="${strNota}">INATIVO SGA</span>`; 
+                }
+                
+                let fE = cli.email || "-";
+                if (cli.isErroEmail) { 
+                    fE = `<span class="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1" title="${strNotaEmail}">❌ ${cli.email}</span>`; 
+                    ab += `<span class="bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 px-2 py-1 rounded text-[10px] font-bold mr-1 print:border" title="${strNotaEmail}">ERRO E-MAIL</span>`; 
+                }
+                if (cli.isEnviado) ab += `<span class="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-2 py-1 rounded text-[10px] font-bold mr-1 print:border">E-MAIL ENVIADO</span>`;
+                if (cli.isMoto) ab += `<span class="bg-emerald-200 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-300 px-2 py-1 rounded text-[10px] font-bold mr-1 print:border">🏍️ MOTO</span>`;
+                if (ab === "") ab = `<span class="text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-wider">Pendente</span>`;
+                
+                const isResolvido = cli.isEnviado && cli.isWhatsEnviado && !cli.isInativo && !cli.isErroEmail && !strNota.includes("CONCLUÍDO");
+                const rowCls = isResolvido ? "bg-slate-50 dark:bg-slate-800/40 opacity-60 grayscale-[30%]" : (cli.isMoto ? "linha-moto hover:brightness-95 dark:hover:brightness-110" : "hover:bg-indigo-50 dark:hover:bg-slate-700/50 bg-white dark:bg-darkcard table-row-anim transition");
+                
+                let badgeEtapa = cli.etapaNum === 1 ? `<div class="text-center text-xl cursor-help transform hover:scale-110 transition drop-shadow-sm" title="Boas Vindas">🔰</div>` : cli.etapaNum === 2 ? `<div class="text-center text-xl cursor-help transform hover:scale-110 transition drop-shadow-sm" title="Alerta 5 Dias">⚠️</div>` : `<div class="text-center text-xl cursor-help transform hover:scale-110 transition drop-shadow-sm" title="Prazo Expirado">⛔</div>`;
+                
+                let tooltipEnd = ""; 
+                if (cli.cidade) tooltipEnd += `Cidade: ${cli.cidade}`; 
+                if (cli.bairro) tooltipEnd += (tooltipEnd ? `\n` : ``) + `Bairro: ${cli.bairro}`; 
+                if (!tooltipEnd) tooltipEnd = "Endereço detalhado indisponível";
+                
+                let htmlLocalizacao = `<div class="flex items-center justify-between gap-2"><div class="cursor-help font-black text-[13px] whitespace-nowrap ${cli.isTecnicoIndisp ? 'text-amber-600 dark:text-amber-500' : 'text-slate-700 dark:text-slate-300'}" title="${tooltipEnd}">📍 ${cli.estado || "N/A"}</div><div class="flex items-center gap-1 print:hidden" title="Travar Cliente"><span class="text-lg grayscale opacity-70">🔒</span> ${criarToggle('tecnicoIndisp', cli.idUnico, cli.isTecnicoIndisp, 'bg-amber-500')}</div></div>`;
+                
+                let htmlLogistica = `<span class="text-slate-400 dark:text-slate-500 italic text-[10px]">Sem rota definida</span>`;
+                if (cli.tecnicoDisp) { 
+                    let tD = String(cli.tecnicoTipo || "Volante"); 
+                    let nT = tD === 'Base' ? 'Base Física' : tD === 'Outros Estados' ? 'Outros Estados' : 'Técnico Volante'; 
+                    htmlLogistica = `<div class="font-bold text-[11px] text-slate-700 dark:text-slate-300 w-32 truncate cursor-help hover:text-indigo-600 transition" title="Atendimento: ${nT}">👷 ${cli.tecnicoDisp}</div><div class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">🛣️ ${cli.tecnicoDist} • ⏳ ${cli.tecnicoTempo}</div>`; 
+                }
+                
+                let htmlDisparos = `<div class="flex items-center gap-1.5 mt-1.5 flex-wrap">`; 
+                let tD = false;
+                if (cli.histE1) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="🔰 Boas Vindas (Etapa 1)\nEnviado em: ${cli.histE1}">🔰</span>`; tD = true; }
+                if (cli.histE2) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="⚠️ Lembrete 5 Dias (Etapa 2)\nEnviado em: ${cli.histE2}">⚠️</span>`; tD = true; }
+                if (cli.histE3) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="⛔ Prazo Expirado (Etapa 3)\nEnviado em: ${cli.histE3}">⛔</span>`; tD = true; }
+                if (!tD) { htmlDisparos += `<span class="text-slate-400 dark:text-slate-500 italic text-[10px] font-medium border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-800">Sem histórico</span>`; } 
+                htmlDisparos += `</div>`;
+
+                const isChecked = selectionSet.has(cli.idUnico) ? "checked" : "";
+                let fB = cli.isFipeBaixa ? "bg-rose-100 dark:bg-rose-900/40 border-rose-300 dark:border-rose-700/50 text-rose-800 dark:text-rose-400" : "bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200";
+                let vD = cli.placa ? cli.placa : (cli.chassi ? cli.chassi : "-"); 
+                let fD = (typeof formatarMoedaBRL === 'function') ? formatarMoedaBRL(cli.fipe) : cli.fipe;
+                
+                let lnkWhats = (typeof gerarLinkWhats === 'function') ? gerarLinkWhats(cli.telefone, cli.mensagemWhatsApp) : cli.telefone;
+
+                corpo.innerHTML += `
+                    <tr class="${rowCls} border-b border-slate-100 dark:border-slate-800/60">
+                        <td class="py-2 px-3 text-center border-r border-slate-100 dark:border-slate-700/30 print:hidden">
+                            <input type="checkbox" data-id="${cli.idUnico}" onchange="updateSelection(this)" class="chk-cli w-4 h-4 rounded text-indigo-600 dark:bg-slate-700 dark:border-slate-600 cursor-pointer focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed" ${isResolvido ? "disabled" : ""} ${isChecked}>
+                        </td>
+                        <td class="py-2 px-3 text-center border-r border-slate-100 dark:border-slate-700/30 align-middle">${badgeEtapa}</td>
+                        <td class="py-2 px-4 font-bold ${cNC} whitespace-nowrap" title="${strNota}">
+                            <div class="flex items-center gap-2">
+                                <span class="truncate max-w-[200px]">${cli.nome || "-"}</span>
+                                <button onclick="abrirModalEdicaoCliente('${cli.idUnico}')" class="text-[10px] bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded shadow-sm transition print:hidden" title="Editar">✏️</button>
+                            </div>
+                            <span class="mt-1 block">${ab}</span>
+                        </td>
+                        <td class="py-2 px-4 font-mono font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                            ${vD}<br><span class="text-xs ${fB} border px-2.5 py-1 rounded-md font-black mt-1.5 block w-max shadow-sm tracking-wide print:border-none print:p-0 print:bg-transparent print:mt-0">${fD}</span>
+                        </td>
+                        <td class="py-2 px-4 whitespace-nowrap text-[12px]">
+                            <span class="text-slate-500 font-bold" title="Entrada">📥 ${cli.dataPlanilha || '-'}</span><br>${htmlDisparos}
+                        </td>
+                        <td class="py-2 px-4 whitespace-nowrap text-xs">
+                            ${fE}<br>${lnkWhats}
+                        </td>
+                        <td class="py-2 px-4 bg-amber-50/50 dark:bg-amber-900/10 border-l border-amber-100/50 dark:border-amber-900/20 print:bg-transparent">${htmlLocalizacao}</td>
+                        <td class="py-2 px-4 bg-purple-50/50 dark:bg-purple-900/10 border-l border-purple-100/50 dark:border-purple-900/20 print:bg-transparent">${htmlLogistica}</td>
+                        <td class="py-2 px-3 text-center bg-rose-50/50 dark:bg-rose-900/10 border-l border-rose-100/50 dark:border-rose-900/20 print:hidden">${criarToggle('fipeBaixa', cli.idUnico, cli.isFipeBaixa, 'bg-rose-500')}</td>
+                        <td class="py-2 px-3 text-center bg-blue-50/50 dark:bg-blue-900/10 border-l border-blue-100/50 dark:border-blue-900/20 print:hidden">${criarToggle('respEmail', cli.idUnico, cli.isRespondeuEmail, 'bg-blue-500')}</td>
+                        <td class="py-2 px-3 text-center bg-emerald-50/50 dark:bg-emerald-900/10 border-l border-emerald-100/50 dark:border-emerald-900/20 print:hidden">${criarToggle('respWhats', cli.idUnico, cli.isRespondeuWhats, 'bg-emerald-500')}</td>
+                    </tr>`;
+            });
+            atualizarBoxPaginacao(start, end, total);
+        }
+        
+        const tabelaFila = document.getElementById('tabela-fila');
+        if (tabelaFila) tabelaFila.classList.remove('hidden');
+        
+        const loadingFila = document.getElementById('loading-fila');
+        if (loadingFila) loadingFila.classList.add('hidden');
+    }
+
+    // =======================================================================
+    // SELEÇÃO E BARRA FLUTUANTE DE AÇÕES
+    // =======================================================================
+    function updateSelection(chk) { 
+        const val = chk.getAttribute('data-id'); 
+        if (chk.checked) selectionSet.add(val); 
+        else selectionSet.delete(val); 
+        contarChecksGlobais(); 
+    }
+    
+    function marcarTodosGeral(m) { 
+        document.querySelectorAll('.chk-cli:not([disabled])').forEach(c => { 
+            c.checked = m.checked; 
+            const val = c.getAttribute('data-id'); 
+            if (m.checked) selectionSet.add(val); 
+            else selectionSet.delete(val); 
+        }); 
+        contarChecksGlobais(); 
+    }
+    
+    function contarChecksGlobais() { 
+        const elContador = document.getElementById('contadorSel');
+        if (elContador) elContador.innerText = selectionSet.size; 
+        
+        let btnMig = document.getElementById('btn-flutuante-migracao');
+        if (!btnMig) {
+             const btnHtml = `<button id="btn-flutuante-migracao" onclick="abrirModalMigracao()" class="fixed bottom-10 right-10 bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 px-6 rounded-full shadow-2xl transition-all transform duration-300 z-40 flex items-center gap-2 translate-y-32 opacity-0 print:hidden"><span class="text-2xl">🔄</span> Mudar Etapa <span id="txt-qnt-migracao" class="bg-white text-indigo-600 px-2 py-0.5 rounded-md text-sm ml-1">0</span></button>`;
+             document.body.insertAdjacentHTML('beforeend', btnHtml);
+             btnMig = document.getElementById('btn-flutuante-migracao');
+        }
+
+        if (selectionSet.size > 0) {
+             btnMig.classList.remove('translate-y-32', 'opacity-0');
+             const txtQnt = document.getElementById('txt-qnt-migracao');
+             if (txtQnt) txtQnt.innerText = selectionSet.size;
+        } else {
+             btnMig.classList.add('translate-y-32', 'opacity-0');
+        }
+    }
+
+    function getAlvosSelecionados() { 
+        return cacheFilaBase.filter(c => selectionSet.has(c.idUnico)); 
+    }
+    
+    function limparSelecaoAposAcao() { 
+        selectionSet.clear(); 
+        contarChecksGlobais(); 
+    }
+
+    // =======================================================================
+    // MOTOR DE MIGRAÇÃO INTELIGENTE SLA
+    // =======================================================================
+    function abrirModalMigracao() {
+        const alvos = getAlvosSelecionados();
+        if (alvos.length === 0) {
+            if(typeof aviso === 'function') return aviso("⚠️ Selecione os clientes que deseja migrar.");
+            return;
+        }
+        
+        const corpo = document.getElementById('corpo-migracao');
+        if(!corpo) return;
+        corpo.innerHTML = "";
+        
+        alvos.forEach(cli => {
+            let badgeAtual = cli.etapaNum === 1 ? '🔰 E1' : cli.etapaNum === 2 ? '⚠️ E2' : '⛔ E3';
+            let badgeSugestao = cli.etapaSugerida === 1 ? '🔰 Etapa 1' : cli.etapaSugerida === 2 ? '⚠️ Etapa 2 (5d)' : '⛔ Etapa 3 (Expirado)';
+            let colorSLA = cli.diasUteisSLA >= 10 ? 'text-rose-600' : cli.diasUteisSLA >= 5 ? 'text-amber-600' : 'text-emerald-600';
+            
+            corpo.innerHTML += `
+              <tr class="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <td class="p-3 font-bold text-slate-800 dark:text-slate-200">${cli.nome}<br><span class="text-[10px] font-mono text-slate-500">${cli.placa || cli.chassi}</span></td>
+                <td class="p-3 text-center font-black text-slate-600 dark:text-slate-400">${badgeAtual}</td>
+                <td class="p-3 text-center font-black ${colorSLA}">${cli.diasUteisSLA} dias</td>
+                <td class="p-3 text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20" data-sugestao="${cli.etapaSugerida}">${badgeSugestao}</td>
+                <td class="p-3 text-center">
+                  <select id="select-migracao-${cli.idUnico}" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded p-2 text-sm font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 sel-migracao" data-id="${cli.idUnico}">
+                    <option value="1" ${cli.etapaNum === 1 ? 'selected' : ''}>🔰 Etapa 1 (Boas Vindas)</option>
+                    <option value="2" ${cli.etapaNum === 2 ? 'selected' : ''}>⚠️ Etapa 2 (Lembrete 5d)</option>
+                    <option value="3" ${cli.etapaNum === 3 ? 'selected' : ''}>⛔ Etapa 3 (Expirado)</option>
+                  </select>
+                </td>
+              </tr>
+            `;
+        });
+        
+        const mod = document.getElementById('modal-migracao');
+        if(mod) mod.classList.remove('hidden');
+    }
+
+    function fecharModalMigracao() { 
+        const mod = document.getElementById('modal-migracao');
+        if(mod) mod.classList.add('hidden'); 
+    }
+
+    function aplicarSugestoesSLA() {
+        getAlvosSelecionados().forEach(cli => {
+             const sel = document.getElementById(`select-migracao-${cli.idUnico}`);
+             if (sel) sel.value = cli.etapaSugerida;
+        });
+        if (typeof aviso === 'function') aviso("✨ Inteligência do SLA aplicada! Verifique a coluna de Nova Etapa.", 4000);
+    }
+
+    function forcarTodosParaEtapa(etapa) {
+        document.querySelectorAll('.sel-migracao').forEach(sel => sel.value = etapa);
+    }
+
+    function confirmarMigracaoEtapas() {
+        const movimentacoes = [];
+        let algoParaMover = false;
+
+        document.querySelectorAll('.sel-migracao').forEach(sel => {
+             const idUnico = sel.getAttribute('data-id');
+             const novaEtapa = parseInt(sel.value);
+             const cli = cacheFilaBase.find(c => c.idUnico === idUnico);
+             if (cli && cli.etapaNum !== novaEtapa) {
+                  movimentacoes.push({ idUnico: idUnico, novaEtapa: novaEtapa });
+                  algoParaMover = true;
+             }
+        });
+
+        if (!algoParaMover) {
+            if(typeof aviso === 'function') aviso("⚠️ Nenhum cliente teve a etapa alterada. Eles já estão na etapa correta.", 6000);
+            return;
+        }
+
+        const btn = document.getElementById('btn-confirmar-migracao');
+        if(btn) { btn.innerHTML = "⏳ Movendo..."; btn.disabled = true; }
+
+        google.script.run
+            .withSuccessHandler(res => {
+                 if (typeof aviso === 'function') aviso(res, 6000);
+                 if(btn) { btn.innerHTML = "🔄 Executar Migração"; btn.disabled = false; }
+                 fecharModalMigracao(); 
+                 limparSelecaoAposAcao(); 
+                 carregarFilaGeral();
+            })
+            .withFailureHandler(err => {
+                 if (typeof aviso === 'function') aviso("❌ Erro: " + err.message, 8000);
+                 if(btn) { btn.innerHTML = "🔄 Executar Migração"; btn.disabled = false; }
+            })
+            .web_migrarClientesEtapa(movimentacoes);
+    }
+
+    // =======================================================================
+    // AÇÕES EM LOTE DA FILA (VARREDURAS E AUTOMAÇÕES)
+    // =======================================================================
+    function processarItemBackend(cli, comando) { 
+        return new Promise((res, rej) => { 
+            google.script.run
+                .withSuccessHandler(r => res(r))
+                .withFailureHandler(e => rej(e))
+                .processarItemLoteWeb(cli, comando); 
+        }); 
+    }
+
+    async function rodarFerramentaLote(comando) {
+        const alvos = getAlvosSelecionados(); 
+        if(alvos.length === 0) {
+            if(typeof aviso === 'function') aviso('⚠️ Selecione os clientes.');
+            return;
+        }
+        
+        const mod = document.getElementById('modal-progresso');
+        const bar = document.getElementById('barra-progresso');
+        const cnt = document.getElementById('contador-progresso');
+        const pct = document.getElementById('percentual-progresso');
+        const dsc = document.getElementById('desc-progresso');
+        
+        if(mod) mod.classList.remove('hidden'); 
+        if(bar) bar.style.width = '0%'; 
+        if(cnt) cnt.innerText = `0 / ${alvos.length}`; 
+        if(pct) pct.innerText = '0%'; 
+        if(dsc) dsc.innerText = 'Preparando...';
+        
+        let suc = 0, err = 0;
+        
+        for (let i = 0; i < alvos.length; i++) {
+            if(dsc) dsc.innerText = `Processando: ${alvos[i].nome || alvos[i].placa}`;
+            try { 
+                const res = await processarItemBackend(alvos[i], comando); 
+                if (res.status === 'ok') suc++; else if (res.status === 'erro') err++; 
+            } catch (e) { 
+                err++; 
+            }
+            const p = Math.round(((i + 1) / alvos.length) * 100); 
+            if(bar) bar.style.width = `${p}%`; 
+            if(cnt) cnt.innerText = `${i + 1} / ${alvos.length}`; 
+            if(pct) pct.innerText = `${p}%`;
+        }
+        
+        if(dsc) dsc.innerText = 'Finalizando...'; 
+        setTimeout(() => { 
+            if(mod) mod.classList.add('hidden'); 
+            if(typeof aviso === 'function') aviso(`✅ Concluído!\n${suc} atualizados.\n${err} ignorados.`, 8000); 
+            limparSelecaoAposAcao(); 
+            carregarFilaGeral(); 
+        }, 800);
+    }
+    
+    function rodarFerramentaGlobal(cmd) { 
+        if(typeof aviso === 'function') aviso("⚙️ Processando...", 120000); 
+        google.script.run
+            .withSuccessHandler(res => {
+                if(typeof aviso === 'function') aviso(res, 8000);
+            })
+            .executarFerramentaWebGlobal(cmd); 
+    }
+
+    function varrerConcluidosSelecionados() {
+        const alvos = getAlvosSelecionados();
+        if(alvos.length === 0) {
+            if(typeof aviso === 'function') aviso('⚠️ Selecione primeiro os clientes que deseja verificar.');
+            return;
+        }
+        
+        if(typeof aviso === 'function') aviso("⏳ A verificar o status dos clientes selecionados na API Hinova...", 60000);
+        
+        google.script.run
+            .withSuccessHandler(function(mensagem) {
+                if(typeof aviso === 'function') aviso(mensagem, 8000);
+                limparSelecaoAposAcao();
+                carregarFilaGeral();
+            })
+            .withFailureHandler(function(erro) {
+                if(typeof aviso === 'function') aviso("❌ Erro na varredura seletiva: " + erro.message, 8000);
+            })
+            .varrerConcluidosSelecionadosWeb(alvos);
+    }
+</script>

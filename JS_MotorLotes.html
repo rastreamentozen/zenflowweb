@@ -1,0 +1,456 @@
+<script>
+    console.log("🟢 [ZENFLOW] Módulo JS_MotorLotes carregado.");
+
+    // =======================================================================
+    // IMPORTAÇÃO DE LOTES (SGA HINOVA) - PARSER INTELIGENTE
+    // =======================================================================
+    function limparLote() { 
+      const txtSGA = document.getElementById('txtPastedSGA'); 
+      if (txtSGA) txtSGA.value = ""; 
+      const boxP = document.getElementById('boxPreviewLote'); 
+      if (boxP) boxP.classList.add('hidden'); 
+      cacheLoteParsed = []; 
+    }
+    
+    function processarPastedData() {
+      const txtEl = document.getElementById('txtPastedSGA');
+      if (!txtEl) return;
+      const rawText = txtEl.value; 
+      if(!rawText.trim()) return aviso("⚠️ Cole o texto primeiro!");
+      
+      const linhas = rawText.split('\n').map(l => l.trim()).filter(l => l !== "");
+      const parsed = [];
+      let i = 0;
+      
+      while (i < linhas.length) {
+          if (linhas[i].toUpperCase().includes("PENDENTE")) {
+              let cli = { data: "", nome: "", placa: "", chassi: "", email: "", telefone: "", fipe: "", estado: "", cidade: "", bairro: "" };
+              
+              let matchData = linhas[i].match(/\d{2}\/\d{2}\/\d{4}/);
+              cli.data = matchData ? matchData[0] : "";
+              i++;
+              
+              if (i < linhas.length) { cli.nome = linhas[i].toUpperCase(); i++; }
+              
+              if (i < linhas.length && /^[A-Z0-9]{7}$/i.test(linhas[i].replace(/[^A-Z0-9]/ig, ''))) {
+                  cli.placa = linhas[i].toUpperCase();
+                  i++;
+              }
+              
+              if (i < linhas.length && linhas[i].length === 17) {
+                  cli.chassi = linhas[i].toUpperCase();
+                  i++;
+              }
+              
+              if (i < linhas.length && linhas[i].toUpperCase().includes("R$")) {
+                  cli.fipe = linhas[i].replace(/R\$\s?/gi, '').trim();
+                  i++;
+              }
+              
+              if (i < linhas.length && linhas[i].includes("@")) {
+                  cli.email = linhas[i].toLowerCase();
+                  i++;
+              }
+              
+              if (i < linhas.length && (linhas[i].includes("(") || /^\d/.test(linhas[i]))) {
+                  cli.telefone = linhas[i];
+                  i++;
+              }
+              
+              if (i < linhas.length && linhas[i].length === 2) {
+                  cli.estado = linhas[i].toUpperCase();
+                  i++;
+              }
+              
+              if (i < linhas.length && !linhas[i].toUpperCase().includes("PENDENTE")) {
+                  cli.cidade = String(linhas[i]).trim();
+                  i++;
+              }
+              
+              if (i < linhas.length && !linhas[i].toUpperCase().includes("PENDENTE")) {
+                  cli.bairro = String(linhas[i]).trim();
+                  i++;
+              }
+              
+              parsed.push(cli);
+          } else {
+              i++; 
+          }
+      }
+      
+      if (parsed.length === 0) return aviso("⚠️ Não encontrei clientes. Certifique-se de colar o relatório completo com os status 'PENDENTE'.");
+      
+      cacheLoteParsed = parsed; 
+      const contP = document.getElementById('contPreview'); 
+      if(contP) contP.innerText = parsed.length;
+      
+      const corpoP = document.getElementById('corpoPreview');
+      if (corpoP) {
+          corpoP.innerHTML = parsed.map(c => { 
+            let fipeDisplay = formatarMoedaBRL(c.fipe); 
+            let veicDisplay = c.placa ? c.placa : (c.chassi ? c.chassi : '-'); 
+            let localDisplay = (c.estado || c.cidade) ? `<span class="text-[10px] text-slate-500 dark:text-slate-400 block mt-1 font-bold">📍 ${c.cidade || 'Sem Cid'} - ${c.estado || ''}</span>` : '';
+            
+            return `<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-100 dark:border-slate-700/50">
+                      <td class="py-3 px-4 font-mono font-medium">${c.data || '-'}</td>
+                      <td class="py-3 px-4 font-bold text-indigo-600 dark:text-indigo-400">${c.nome || 'SEM NOME'}${localDisplay}</td>
+                      <td class="py-3 px-4 font-mono font-medium text-slate-600 dark:text-slate-300">${veicDisplay}<br><span class="text-[12px] bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-2.5 py-1 rounded-md text-slate-800 dark:text-slate-200 font-black mt-1.5 block w-max shadow-sm">${fipeDisplay}</span></td>
+                      <td class="py-3 px-4 text-xs">${c.email}<br><span class="font-bold text-slate-800 dark:text-slate-200 mt-1 block">${c.telefone}</span></td>
+                    </tr>` 
+          }).join('');
+      }
+      
+      const boxP = document.getElementById('boxPreviewLote'); 
+      if(boxP) boxP.classList.remove('hidden'); 
+      
+      aviso(`✅ ${parsed.length} clientes formatados prontos para importação!`);
+    }
+
+    function confirmarLoteBanco() { 
+      if(cacheLoteParsed.length === 0) return; 
+      const btn = document.getElementById('btnConfirmarLote'); 
+      
+      if(btn) { 
+          btn.innerHTML = "Salvando..."; 
+          btn.disabled = true; 
+      }
+      
+      google.script.run
+        .withSuccessHandler(res => { 
+            aviso(res, 10000); 
+            limparLote(); 
+            if(btn) { btn.innerHTML = "📥 Salvar no Banco Seguro"; btn.disabled = false; }
+        })
+        .withFailureHandler(e => { 
+            aviso("❌ Erro: " + e.message); 
+            if(btn) { btn.innerHTML = "📥 Salvar no Banco Seguro"; btn.disabled = false; }
+        })
+        .cadastrarLoteWeb(cacheLoteParsed); 
+    }
+
+    // =======================================================================
+    // PIPELINE DE DISPAROS DE COMUNICAÇÃO EM LOTE
+    // =======================================================================
+    function mostrarErroCritico(msg) { 
+        const txt = document.getElementById('texto-erro-critico');
+        if (txt) txt.value = msg; 
+        const mod = document.getElementById('modal-erro-critico');
+        if (mod) mod.classList.remove('hidden'); 
+    }
+
+    function copiarErroCritico() { 
+        const txt = document.getElementById('texto-erro-critico');
+        if (txt) {
+            txt.select(); 
+            document.execCommand('copy'); 
+            aviso("📋 Código copiado!", 3000); 
+        }
+    }
+    
+    function fecharModalPreview() { 
+        const mod = document.getElementById('modal-preview-emails');
+        if (mod) mod.classList.add('hidden'); 
+        
+        if (typeof limparSelecaoAposAcao === 'function') limparSelecaoAposAcao(); 
+        if (typeof carregarFilaGeral === 'function') carregarFilaGeral(); 
+    }
+
+    function dispararLote() { 
+      const alvos = (typeof getAlvosSelecionados === 'function') ? getAlvosSelecionados() : cacheFilaBase.filter(c => selectionSet.has(c.idUnico)); 
+      if(alvos.length === 0) return aviso('⚠️ Marque os clientes primeiro.'); 
+      
+      const selectResp = document.getElementById('selectResponsavelFila');
+      const resp = selectResp ? selectResp.value : "Sistema"; 
+      
+      const grupos = {};
+      
+      alvos.forEach(cli => {
+        if(!cli.email) return; 
+        const key = `${(cli.nome || "").toUpperCase().trim()}|${cli.email.toLowerCase().trim()}|${(cli.telefone || "").trim()}|${cli.etapaNum}|${cli.isFipeBaixa}`;
+        
+        if(!grupos[key]) {
+            grupos[key] = { 
+                email: cli.email.toLowerCase().trim(), 
+                nome: cli.nome, 
+                telefone: cli.telefone, 
+                fipe: cli.fipe, 
+                etapaNum: cli.etapaNum, 
+                isFipeBaixa: cli.isFipeBaixa, 
+                veiculos: [], 
+                linhas: [], 
+                isErroEmail: false, 
+                isEnviado: false, 
+                isInativo: false 
+            };
+        }
+        
+        if (cli.isErroEmail) grupos[key].isErroEmail = true; 
+        if (cli.isEnviado) grupos[key].isEnviado = true; 
+        if (cli.isInativo) grupos[key].isInativo = true;
+        
+        grupos[key].veiculos.push(cli.placa ? cli.placa : cli.chassi); 
+        grupos[key].linhas.push(cli);
+      });
+      
+      const listGrupos = Object.values(grupos); 
+      if(listGrupos.length === 0) return aviso("⚠️ Nenhum selecionado possui E-mail válido.");
+      
+      listGrupos.forEach(g => { g.veiculosStr = g.veiculos.join(", "); }); 
+      window.gruposParaEnvio = listGrupos; 
+      window.respParaEnvio = resp;
+      
+      aviso("⏳ Carregando Pipeline...", 60000); 
+      
+      google.script.run
+        .withSuccessHandler(renderizarModalPreview)
+        .withFailureHandler(e => mostrarErroCritico(e.message))
+        .obterPreviewDisparoAgrupadoWeb(listGrupos);
+    }
+
+    function renderizarModalPreview(previews) {
+      const toast = document.getElementById('toast');
+      if (toast) toast.classList.add('hidden'); 
+      
+      window.previewsProcessados = previews;
+      
+      const header = document.getElementById('header-modal-preview'); 
+      if (header) {
+          header.classList.remove('bg-emerald-600'); 
+          header.classList.add('bg-indigo-600');
+      }
+      
+      const titulo = document.getElementById('titulo-modal-preview');
+      if (titulo) titulo.innerHTML = "📧 FASE 1: Validação de E-mails"; 
+      
+      const desc = document.getElementById('desc-modal-preview');
+      if (desc) desc.innerHTML = "Revise as prévias dos e-mails. Clique abaixo para disparar todos em lote e prosseguir.";
+      
+      const divPreview = document.getElementById('preview-emails-body'); 
+      if (divPreview) {
+          divPreview.innerHTML = "";
+          previews.forEach((p, index) => {
+            let eN = p.etapaNum === 1 ? "Boas Vindas" : p.etapaNum === 2 ? "Lembrete 5D" : p.etapaNum === "CANCELAMENTO" ? "Cancelamento" : "Prazo Expirado";
+            divPreview.innerHTML += `<div class="p-5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm mb-4"><div class="flex justify-between items-start mb-3 border-b border-slate-200 dark:border-slate-700 pb-3"><div><div class="font-black text-indigo-600 dark:text-indigo-400 text-lg">${p.email}</div><div class="text-sm text-slate-700 dark:text-slate-300 mt-1"><b>Aos cuidados de:</b> ${p.nome} | <b>Veículo(s):</b> <span class="font-mono">${p.veiculosStr}</span></div></div><div class="text-[10px] uppercase font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-3 py-1.5 rounded-md shadow-sm">Etapa: ${eN}</div></div><div class="border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 flex flex-col overflow-hidden"><div class="bg-slate-200 dark:bg-slate-700 px-3 py-2 text-xs font-black uppercase flex items-center gap-2"><span>📧</span> Corpo do E-mail</div><div class="p-2 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold bg-slate-50 dark:bg-slate-800/50">Assunto: ${p.assunto}</div><div class="p-4 text-sm max-h-48 overflow-y-auto bg-white text-slate-800">${p.emailHtml}</div></div></div>`;
+          });
+      }
+      
+      const footer = document.getElementById('footer-modal-preview');
+      if (footer) {
+          footer.innerHTML = `<button onclick="fecharModalPreview()" class="px-5 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition">Cancelar Operação</button><button onclick="confirmarEnvioEmails()" class="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-lg shadow-indigo-200 dark:shadow-none flex items-center gap-2">🚀 Disparar TODOS os E-mails</button>`;
+      }
+      
+      const mod = document.getElementById('modal-preview-emails');
+      if (mod) mod.classList.remove('hidden');
+    }
+
+    async function confirmarEnvioEmails() { 
+      const gV = window.gruposParaEnvio.filter(g => !g.isErroEmail && !g.isEnviado && !g.isInativo); 
+      
+      if(gV.length > 0) {
+          const mod = document.getElementById('modal-progresso');
+          const bar = document.getElementById('barra-progresso');
+          const cnt = document.getElementById('contador-progresso');
+          const pct = document.getElementById('percentual-progresso');
+          const dsc = document.getElementById('desc-progresso');
+          
+          if (mod) mod.classList.remove('hidden'); 
+          if (bar) bar.style.width = '0%'; 
+          if (cnt) cnt.innerText = `0 / ${gV.length}`; 
+          if (pct) pct.innerText = '0%'; 
+          
+          let suc = 0, err = 0;
+          
+          for (let i = 0; i < gV.length; i++) {
+            if (dsc) dsc.innerText = `Enviando E-mail: ${gV[i].nome}`;
+            try { 
+                await dispararEmailBackendPromise(gV[i], window.respParaEnvio); 
+                suc++; 
+            } catch (e) { 
+                err++; 
+            }
+            const p = Math.round(((i + 1) / gV.length) * 100); 
+            if (bar) bar.style.width = `${p}%`; 
+            if (cnt) cnt.innerText = `${i + 1} / ${gV.length}`; 
+            if (pct) pct.innerText = `${p}%`;
+          }
+          
+          if (dsc) dsc.innerText = 'Iniciando Fase 2...'; 
+          await new Promise(r => setTimeout(r, 1000)); 
+          if (mod) mod.classList.add('hidden'); 
+          
+          if (err > 0) aviso(`⚠️ ${suc} enviados. ${err} falharam.`, 5000); 
+          else aviso(`✅ E-mails enviados! Preparando WhatsApp...`, 3000);
+      } else { 
+          aviso(`✅ Pulando para WhatsApp...`, 3000); 
+      }
+      
+      renderizarModalWhatsApp(window.previewsProcessados);
+    }
+
+    function renderizarModalWhatsApp(previews) {
+      const header = document.getElementById('header-modal-preview'); 
+      if (header) {
+          header.classList.remove('bg-indigo-600'); 
+          header.classList.add('bg-emerald-600');
+      }
+      
+      const titulo = document.getElementById('titulo-modal-preview');
+      if (titulo) titulo.innerHTML = "💬 FASE 2: Disparo de WhatsApp"; 
+      
+      const desc = document.getElementById('desc-modal-preview');
+      if (desc) desc.innerHTML = "Envie os WhatsApps e clique no botão para registrar o disparo.";
+      
+      const divPreview = document.getElementById('preview-emails-body'); 
+      if (divPreview) {
+          divPreview.innerHTML = "";
+          previews.forEach((p, index) => {
+            let eN = p.etapaNum === 1 ? "Boas Vindas" : p.etapaNum === 2 ? "Lembrete 5D" : p.etapaNum === "CANCELAMENTO" ? "Cancelamento" : "Prazo Expirado"; 
+            const fT = window.gruposParaEnvio[index].fipe ? formatarMoedaBRL(window.gruposParaEnvio[index].fipe) : "Sem FIPE";
+            
+            divPreview.innerHTML += `<div class="p-5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm mb-4" id="card-preview-whats-${index}"><div class="flex justify-between items-center mb-4 border-b border-slate-200 dark:border-slate-700 pb-3"><div class="font-black text-emerald-600 dark:text-emerald-400 text-lg flex items-center gap-2"><span>📱</span> ${p.nome}</div><div class="text-[10px] uppercase font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-3 py-1.5 rounded-md shadow-sm">Etapa: ${eN}</div></div><div class="grid grid-cols-1 lg:grid-cols-3 gap-6"><div class="lg:col-span-2 border border-emerald-300 dark:border-emerald-800 rounded-lg bg-white dark:bg-slate-900 flex flex-col overflow-hidden shadow-sm"><div class="bg-emerald-200 dark:bg-emerald-900/60 px-3 py-2 text-xs font-black uppercase text-emerald-900 dark:text-emerald-300 flex items-center gap-2"><span>💬</span> Prévia (WhatsApp)</div><div class="p-4 text-[13px] max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed bg-emerald-50/30 dark:bg-slate-900 text-slate-800 dark:text-slate-300">${p.whatsText}</div></div><div class="lg:col-span-1 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 p-5 flex flex-col justify-between shadow-sm"><div><p class="text-[10px] uppercase font-black text-slate-400 mb-3 tracking-wider border-b border-slate-200 dark:border-slate-700 pb-2">Resumo</p><div class="mb-3"><span class="block text-[11px] font-bold text-slate-500 mb-0.5">Cliente:</span><p class="font-black text-slate-800 dark:text-slate-200 truncate text-sm" title="${p.nome}">${p.nome}</p></div><div class="mb-3"><span class="block text-[11px] font-bold text-slate-500 mb-0.5">Identificação:</span><span class="text-xs bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-2 py-0.5 rounded font-mono font-bold text-slate-700 dark:text-slate-300 block w-max">${p.veiculosStr}</span></div><div class="mb-3"><span class="block text-[11px] font-bold text-slate-500 mb-0.5">FIPE:</span><p class="text-sm font-black text-indigo-600 dark:text-indigo-400">${fT}</p></div><div class="mb-2"><span class="block text-[11px] font-bold text-slate-500 mb-0.5">Telefone:</span><p class="text-sm font-mono text-slate-800 dark:text-slate-200 font-bold">${p.telefoneLimpo ? '+' + p.telefoneLimpo : 'Não Cadastrado'}</p></div></div><button id="btn-whats-${index}" onclick="enviarWhatsIndividual(${index})" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm transition flex items-center justify-center gap-2 mt-4 shadow-lg shadow-emerald-200 dark:shadow-none transform hover:-translate-y-0.5"><span class="text-lg">💬</span> Disparar e Registrar</button></div></div></div>`;
+          });
+      }
+      
+      const footer = document.getElementById('footer-modal-preview');
+      if (footer) {
+          footer.innerHTML = `<button onclick="fecharModalPreview()" class="px-8 py-3 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-900 transition shadow-lg w-full md:w-auto">Concluir e Fechar</button>`;
+      }
+    }
+
+    function enviarWhatsIndividual(index) {
+      const p = window.previewsProcessados[index]; 
+      if(!p.telefoneLimpo || p.telefoneLimpo.length < 10) return aviso("⚠️ Telefone inválido.");
+      
+      window.open(`https://wa.me/${p.telefoneLimpo}?text=${encodeURIComponent(p.whatsText)}`, '_blank');
+      
+      const btn = document.getElementById(`btn-whats-${index}`); 
+      if(btn) {
+         btn.innerHTML = `⏳ Marcando...`; 
+         btn.disabled = true; 
+         btn.classList.replace("bg-emerald-600", "bg-emerald-400");
+      }
+      
+      const isCancelamento = p.etapaNum === "CANCELAMENTO";
+      
+      const runner = google.script.run
+        .withSuccessHandler(() => { 
+          if(btn) {
+             btn.innerHTML = `✅ Whats Marcado`; 
+             btn.classList.replace("bg-emerald-400", "bg-green-600"); 
+             btn.classList.add("cursor-not-allowed"); 
+          }
+        })
+        .withFailureHandler(e => { 
+          if(btn) {
+             btn.innerHTML = `❌ Erro`; 
+             btn.disabled = false; 
+             btn.classList.replace("bg-emerald-400", "bg-red-600"); 
+          }
+          aviso("❌ Erro ao marcar: " + e.message);
+        });
+
+      if (isCancelamento) {
+        runner.web_marcarWhatsCancelamentoWeb([window.gruposParaEnvio[index]], window.respParaEnvio);
+      } else {
+        runner.marcarWhatsAgrupadoWeb([window.gruposParaEnvio[index]], window.respParaEnvio);
+      }
+    }
+    
+    function marcarLoteSemEnviar() { 
+        const alvos = (typeof getAlvosSelecionados === 'function') ? getAlvosSelecionados() : cacheFilaBase.filter(c => selectionSet.has(c.idUnico)); 
+        if(alvos.length === 0) return aviso('⚠️ Selecione primeiro.'); 
+        
+        const selectResp = document.getElementById('selectResponsavelFila'); 
+        const resp = selectResp ? selectResp.value : "Sistema"; 
+        
+        if(!confirm(`Marcar ${alvos.length} como enviados?`)) return; 
+        
+        aviso("✔️ Marcando...", 60000); 
+        google.script.run
+            .withSuccessHandler(res => { 
+                aviso(res, 6000); 
+                if (typeof limparSelecaoAposAcao === 'function') limparSelecaoAposAcao(); 
+                if (typeof carregarFilaGeral === 'function') carregarFilaGeral(); 
+            })
+            .marcarComoEnviadoWeb(alvos, resp); 
+    }
+
+    // =======================================================================
+    // AUTOMAÇÕES DE LOTE (SGA E FERRAMENTAS)
+    // =======================================================================
+    function processarItemBackend(cli, comando) { 
+        return new Promise((res, rej) => { 
+            google.script.run
+                .withSuccessHandler(r => res(r))
+                .withFailureHandler(e => rej(e))
+                .processarItemLoteWeb(cli, comando); 
+        }); 
+    }
+
+    async function rodarFerramentaLote(comando) {
+      const alvos = (typeof getAlvosSelecionados === 'function') ? getAlvosSelecionados() : cacheFilaBase.filter(c => selectionSet.has(c.idUnico)); 
+      if(alvos.length === 0) return aviso('⚠️ Selecione os clientes.');
+      
+      const mod = document.getElementById('modal-progresso');
+      const bar = document.getElementById('barra-progresso');
+      const cnt = document.getElementById('contador-progresso');
+      const pct = document.getElementById('percentual-progresso');
+      const dsc = document.getElementById('desc-progresso');
+      
+      if (mod) mod.classList.remove('hidden'); 
+      if (bar) bar.style.width = '0%'; 
+      if (cnt) cnt.innerText = `0 / ${alvos.length}`; 
+      if (pct) pct.innerText = '0%'; 
+      if (dsc) dsc.innerText = 'Preparando...';
+      
+      let suc = 0, err = 0;
+      
+      for (let i = 0; i < alvos.length; i++) {
+        if (dsc) dsc.innerText = `Processando: ${alvos[i].nome || alvos[i].placa}`;
+        try { 
+            const res = await processarItemBackend(alvos[i], comando); 
+            if (res.status === 'ok') suc++; else if (res.status === 'erro') err++; 
+        } catch (e) { 
+            err++; 
+        }
+        
+        const p = Math.round(((i + 1) / alvos.length) * 100); 
+        if (bar) bar.style.width = `${p}%`; 
+        if (cnt) cnt.innerText = `${i + 1} / ${alvos.length}`; 
+        if (pct) pct.innerText = `${p}%`;
+      }
+      
+      if (dsc) dsc.innerText = 'Finalizando...'; 
+      setTimeout(() => { 
+          if (mod) mod.classList.add('hidden'); 
+          aviso(`✅ Concluído!\n${suc} atualizados.\n${err} ignorados.`, 8000); 
+          if (typeof limparSelecaoAposAcao === 'function') limparSelecaoAposAcao(); 
+          if (typeof carregarFilaGeral === 'function') carregarFilaGeral(); 
+      }, 800);
+    }
+    
+    function rodarFerramentaGlobal(cmd) { 
+        aviso("⚙️ Processando...", 120000); 
+        google.script.run
+            .withSuccessHandler(res => aviso(res, 8000))
+            .executarFerramentaWebGlobal(cmd); 
+    }
+
+    function varrerConcluidosSelecionados() {
+      const alvos = (typeof getAlvosSelecionados === 'function') ? getAlvosSelecionados() : cacheFilaBase.filter(c => selectionSet.has(c.idUnico)); 
+      if(alvos.length === 0) return aviso('⚠️ Selecione primeiro os clientes que deseja verificar.');
+      
+      aviso("⏳ A verificar o status dos clientes selecionados na API Hinova...", 60000);
+      
+      google.script.run
+        .withSuccessHandler(function(mensagem) {
+          aviso(mensagem, 8000);
+          if (typeof limparSelecaoAposAcao === 'function') limparSelecaoAposAcao();
+          if (typeof carregarFilaGeral === 'function') carregarFilaGeral();
+        })
+        .withFailureHandler(function(erro) {
+          aviso("❌ Erro na varredura seletiva: " + erro.message, 8000);
+        })
+        .varrerConcluidosSelecionadosWeb(alvos);
+    }
+</script>

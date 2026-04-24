@@ -1,0 +1,178 @@
+<script>
+    console.log("🟢 [ZENFLOW] Módulo JS_Auth carregado.");
+
+    // =======================================================================
+    // AUTENTICAÇÃO E CONTROLE DE SESSÃO
+    // =======================================================================
+
+    function checarSessaoAtiva() { 
+        const sessaoStr = sessionStorage.getItem('sgcw_session'); 
+        if (sessaoStr) { 
+            usuarioLogado = JSON.parse(sessaoStr); 
+            liberarAcesso(usuarioLogado); 
+            return true; 
+        } 
+        return false; 
+    }
+
+    function fazerLogout() { 
+        sessionStorage.removeItem('sgcw_session'); 
+        
+        const ov = document.getElementById('tela-login-overlay'); 
+        if(ov) { 
+            ov.style.opacity = '1'; 
+            ov.classList.remove('hidden'); 
+        } 
+        
+        const pEl = document.getElementById('login-pass'); 
+        if(pEl) pEl.value = ''; 
+        
+        const nU = document.getElementById('btn-nav-usuarios'); 
+        if(nU) nU.classList.add('hidden'); 
+        
+        window.location.reload(); 
+    }
+
+    function executarLogin() {
+        const uEl = document.getElementById('login-user'); 
+        const pEl = document.getElementById('login-pass'); 
+        const btn = document.getElementById('btn-login'); 
+        const errBox = document.getElementById('login-erro');
+        
+        if(!uEl || !pEl || !btn || !errBox) return;
+        
+        const u = uEl.value.trim(); 
+        const p = pEl.value.trim();
+        
+        if(!u || !p) { 
+            errBox.innerText = "Preencha usuário e senha."; 
+            errBox.classList.remove('hidden'); 
+            return; 
+        }
+        
+        btn.innerText = "Validando..."; 
+        btn.disabled = true; 
+        errBox.classList.add('hidden');
+        
+        google.script.run
+            .withSuccessHandler(res => {
+                if(res.erro) { 
+                    btn.innerText = "Acessar Sistema"; 
+                    btn.disabled = false; 
+                    errBox.innerText = res.erro; 
+                    errBox.classList.remove('hidden'); 
+                } else {
+                    if (res.isDefault) { 
+                        tempUserParaTroca = res; 
+                        const overlay = document.getElementById('tela-login-overlay');
+                        if (overlay) overlay.classList.add('hidden'); 
+                        
+                        const modalSenha = document.getElementById('modal-troca-senha');
+                        if (modalSenha) { 
+                            modalSenha.classList.remove('hidden'); 
+                            modalSenha.classList.add('flex'); 
+                        } 
+                    } else { 
+                        sessionStorage.setItem('sgcw_session', JSON.stringify(res)); 
+                        usuarioLogado = res; 
+                        liberarAcesso(res); 
+                    }
+                }
+            })
+            .withFailureHandler(err => { 
+                btn.innerText = "Acessar Sistema"; 
+                btn.disabled = false; 
+                errBox.innerText = "Falha no servidor."; 
+                errBox.classList.remove('hidden'); 
+            })
+            .web_validarLoginInterno(u, p);
+    }
+
+    function confirmarTrocaDeSenha() {
+        const elNovaSenha = document.getElementById('ipt-nova-senha');
+        const elConfSenha = document.getElementById('ipt-confirma-senha');
+        const errBox = document.getElementById('troca-senha-erro'); 
+        const btn = document.getElementById('btn-trocar-senha');
+
+        if (!elNovaSenha || !elConfSenha || !errBox || !btn) return;
+
+        const s1 = elNovaSenha.value.trim(); 
+        const s2 = elConfSenha.value.trim(); 
+        
+        if (s1.length < 6) { 
+            errBox.innerText = "A senha deve ter no mínimo 6 caracteres."; 
+            errBox.classList.remove('hidden'); 
+            return; 
+        }
+        
+        if (s1 !== s2) { 
+            errBox.innerText = "As senhas não coincidem."; 
+            errBox.classList.remove('hidden'); 
+            return; 
+        }
+        
+        btn.innerText = "⏳ Salvando..."; 
+        btn.disabled = true; 
+        errBox.classList.add('hidden');
+        
+        google.script.run
+            .withSuccessHandler(res => {
+                if (res.erro) { 
+                    btn.innerText = "Salvar e Acessar"; 
+                    btn.disabled = false; 
+                    errBox.innerText = res.erro; 
+                    errBox.classList.remove('hidden'); 
+                } else { 
+                    tempUserParaTroca.isDefault = false; 
+                    sessionStorage.setItem('sgcw_session', JSON.stringify(tempUserParaTroca)); 
+                    usuarioLogado = tempUserParaTroca; 
+                    
+                    const modalSenha = document.getElementById('modal-troca-senha');
+                    if (modalSenha) { 
+                        modalSenha.classList.add('hidden'); 
+                        modalSenha.classList.remove('flex'); 
+                    } 
+                    liberarAcesso(tempUserParaTroca); 
+                }
+            })
+            .withFailureHandler(err => { 
+                btn.innerText = "Salvar e Acessar"; 
+                btn.disabled = false; 
+                errBox.innerText = "Erro no servidor."; 
+                errBox.classList.remove('hidden'); 
+            })
+            .web_alterarSenha(tempUserParaTroca.login, s1);
+    }
+
+    function liberarAcesso(usr) {
+        const overlay = document.getElementById('tela-login-overlay'); 
+        if(overlay) { 
+            overlay.style.opacity = '0'; 
+            setTimeout(() => overlay.classList.add('hidden'), 500); 
+        }
+        
+        const dropResp = document.getElementById('bloco-responsavel');
+        if (dropResp) { 
+            dropResp.innerHTML = `<input type="hidden" id="selectResponsavelFila" value="${usr.nome}"><span class="text-indigo-600 dark:text-indigo-400 font-black text-sm px-3 uppercase tracking-wider select-none">👤 ${usr.nome}</span>`; 
+        }
+        
+        const btnUsr = document.getElementById('btn-nav-usuarios');
+        if (btnUsr) {
+            if (usr.nivel === 'ADMIN' || usr.nivel === 'ADMINISTRADOR') { 
+                btnUsr.classList.remove('hidden'); 
+            } else { 
+                btnUsr.classList.add('hidden'); 
+            }
+        }
+        
+        const btnManual = document.getElementById('btn-nav-manual');
+        if(btnManual && typeof navegar === 'function') {
+            navegar('tela-manual', btnManual);
+        }
+        
+        // Dispara o carregamento da fila se o módulo JS_FilaUnificada já estiver injetado
+        if(typeof carregarFilaGeral === 'function') {
+            carregarFilaGeral();
+        }
+    }
+</script>

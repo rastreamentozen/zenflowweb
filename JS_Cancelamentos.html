@@ -1,0 +1,276 @@
+<script>
+    console.log("🟢 [ZENFLOW] Módulo JS_Cancelamentos carregado.");
+
+    // =======================================================================
+    // NAVEGAÇÃO E VARREDURA DE INATIVOS
+    // =======================================================================
+    function navegarCancelamento(btnElement) { 
+      document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active')); 
+      if(btnElement) btnElement.classList.add('active'); 
+      
+      if (typeof alternarTelas === 'function') alternarTelas('tela-cancelamento'); 
+      
+      selectionSetCanc.clear(); 
+      const cont = document.getElementById('contadorSelCanc');
+      if (cont) cont.innerText = 0;
+      
+      carregarFilaCancelamento(); 
+    }
+
+    function acionarMigracaoInativos() {
+      if(!confirm("Deseja puxar os clientes inativos da aba '6-Situação'? A inteligência organizará todos os clientes não ativos para o formato Web.")) return;
+      
+      aviso("⏳ Varredura interna iniciada. Isso leva apenas alguns segundos...", 120000);
+      
+      google.script.run
+        .withSuccessHandler(res => {
+           aviso(res, 10000);
+           carregarFilaCancelamento();
+        })
+        .withFailureHandler(err => {
+           aviso("❌ Erro ao migrar: " + err.message, 8000);
+        })
+        .web_migrarInativosParaCancelamento();
+    }
+
+    // =======================================================================
+    // CARREGAMENTO E FILTROS DA FILA DE CANCELAMENTOS
+    // =======================================================================
+    function carregarFilaCancelamento() {
+      const loading = document.getElementById('loading-canc');
+      const tabela = document.getElementById('tabela-canc');
+      
+      if(loading) loading.classList.remove('hidden'); 
+      if(tabela) tabela.classList.add('hidden');
+      
+      google.script.run
+        .withSuccessHandler(dados => { 
+            if(loading) loading.classList.add('hidden'); 
+            if (dados && dados.erro) return aviso("❌ " + dados.erro, 10000); 
+            cacheFilaCancBase = dados; 
+            aplicarFiltrosCancelamento(); 
+        })
+        .web_obterFilaCancelamento();
+    }
+
+    function aplicarFiltrosCancelamento() {
+      const ipt = document.getElementById('ipt-busca-canc');
+      const termo = ipt ? ipt.value.toLowerCase().trim() : "";
+      
+      const elStatus = document.getElementById('filtroStatusCanc');
+      const fStatus = elStatus ? elStatus.value : 'alvos';
+      
+      cacheFilaCancFiltrada = cacheFilaCancBase.filter(c => {
+        const sit = String(c.codSituacao).toUpperCase();
+        
+        if (fStatus === 'alvos') {
+           if (sit !== "CANCELADO" && sit !== "CANCELAMENTO PENDENTE") return false;
+        }
+        
+        if (termo !== "") {
+           const n = String(c.nome || "").toLowerCase();
+           const p = String(c.placa || "").toLowerCase().replace(/[^a-z0-9]/g, '');
+           const ch = String(c.chassi || "").toLowerCase().replace(/[^a-z0-9]/g, '');
+           if (!n.includes(termo) && !p.includes(termo.replace(/[^a-z0-9]/g, '')) && !ch.includes(termo) && !sit.toLowerCase().includes(termo)) {
+             return false;
+           }
+        }
+        return true;
+      });
+      desenharTabelaCancelamento();
+    }
+
+    // =======================================================================
+    // RENDERIZAÇÃO DA TABELA DE CANCELAMENTOS
+    // =======================================================================
+    function desenharTabelaCancelamento() {
+      const corpo = document.getElementById('corpo-canc'); 
+      if(!corpo) return;
+      
+      corpo.innerHTML = ""; 
+      const total = cacheFilaCancFiltrada.length;
+      const tabela = document.getElementById('tabela-canc');
+      
+      if(total === 0) { 
+          corpo.innerHTML = `<tr><td colspan="7" class="px-6 py-16 text-center text-slate-500 font-bold text-lg">A fila de cancelamentos está vazia ou nenhum cliente atende à busca. Clique em "Puxar Inativos da Fila".</td></tr>`; 
+          if(tabela) tabela.classList.remove('hidden'); 
+          return; 
+      } 
+      
+      cacheFilaCancFiltrada.forEach((cli) => {
+        let sitTextOriginal = String(cli.codSituacao).toUpperCase();
+        
+        // Verifica doicionário herdado do JS_Global
+        let sitDef = (typeof BADGES_SGA !== 'undefined' && BADGES_SGA[sitTextOriginal]) ? BADGES_SGA[sitTextOriginal] : null;
+        
+        if (!sitDef && typeof BADGES_SGA !== 'undefined') {
+           const chaves = Object.keys(BADGES_SGA);
+           for(let k of chaves) { 
+               if(sitTextOriginal.includes(k)) { 
+                   sitDef = BADGES_SGA[k]; 
+                   break; 
+               } 
+           }
+        }
+        if (!sitDef) sitDef = { txt: sitTextOriginal, css: "bg-slate-100 border-slate-300 text-slate-600" };
+
+        let badgeSGA = `<span class="px-2 py-1 rounded text-[10px] font-black uppercase border ${sitDef.css} shadow-sm inline-flex items-center gap-1 mt-1 block w-max">${sitDef.txt}</span>`;
+        let badgeEtapa = cli.etapaNum === 1 ? `<div class="text-center text-xl cursor-help transform hover:scale-110 transition drop-shadow-sm" title="Originalmente na Etapa 1">🔰</div>` : cli.etapaNum === 2 ? `<div class="text-center text-xl cursor-help transform hover:scale-110 transition drop-shadow-sm" title="Originalmente na Etapa 2">⚠️</div>` : `<div class="text-center text-xl cursor-help transform hover:scale-110 transition drop-shadow-sm" title="Originalmente na Etapa 3">⛔</div>`;
+
+        let cNC = "text-slate-800 dark:text-slate-100";
+        let nomeHtml = `<div class="truncate max-w-[200px] font-bold ${cNC}" title="${cli.nome}">${cli.nome || "-"}</div>${badgeSGA}`;
+
+        let fD = (typeof formatarMoedaBRL === 'function') ? formatarMoedaBRL(cli.fipe) : cli.fipe;
+        let vD = cli.placa ? cli.placa : (cli.chassi ? cli.chassi : "-");
+        let veiculoHtml = `${vD}<br><span class="text-[11px] bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 px-2 py-0.5 rounded-md font-black mt-1 block w-max text-slate-800 dark:text-slate-200 shadow-sm">${fD}</span>`;
+        
+        let htmlDisparos = `<div class="flex items-center justify-center gap-2">`; 
+        let tD = false;
+        if (cli.isEnviado) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="📧 E-mail:\n${cli.dataEmail || ''}">📧</span>`; tD = true; }
+        if (cli.isWhatsEnviado) { htmlDisparos += `<span class="text-[17px] cursor-help hover:scale-125 transition drop-shadow-sm" title="💬 Whats:\n${cli.dataWhats || ''}">💬</span>`; tD = true; }
+        if (!tD) { htmlDisparos += `<span class="text-slate-400 italic text-[10px] font-medium border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-md">Pendente</span>`; } 
+        htmlDisparos += `</div>`;
+
+        let tooltipEnd = `Cidade: ${cli.cidade || 'N/A'}\nBairro: ${cli.bairro || 'N/A'}`;
+        let htmlLocalizacao = `<div class="cursor-help font-black text-[13px] whitespace-nowrap text-slate-700 dark:text-slate-300" title="${tooltipEnd}">📍 ${cli.estado || "N/A"}</div>`;
+
+        let fE = cli.email || "-";
+        let contatoHtml = `${fE}<br>${(typeof gerarLinkWhats === 'function') ? gerarLinkWhats(cli.telefone, cli.mensagemWhatsApp) : cli.telefone}`;
+
+        const isAlvoPermitido = (sitTextOriginal === "CANCELADO" || sitTextOriginal === "CANCELAMENTO PENDENTE");
+        const jaEnviouTudo = (cli.isEnviado && cli.isWhatsEnviado);
+        const disableCheck = (!isAlvoPermitido || jaEnviouTudo);
+        const tooltipCheck = !isAlvoPermitido ? "Apenas Cancelados (6) e Pendentes (17) podem receber comunicação." : "";
+        const isChecked = selectionSetCanc.has(cli.idUnico) ? "checked" : "";
+        const rowCls = jaEnviouTudo ? "bg-slate-50 dark:bg-slate-800/40 opacity-60 grayscale-[30%]" : "hover:bg-rose-50 dark:hover:bg-slate-700/50 bg-white dark:bg-darkcard table-row-anim transition";
+
+        corpo.innerHTML += `<tr class="${rowCls} border-b border-slate-100 dark:border-slate-800/60">
+            <td class="py-2 px-3 text-center border-r border-slate-100 dark:border-slate-700/30 print:hidden">
+                <input type="checkbox" data-id="${cli.idUnico}" onchange="updateSelCanc(this)" class="chk-canc w-4 h-4 rounded text-rose-600 dark:bg-slate-700 dark:border-slate-600 cursor-pointer focus:ring-rose-500 disabled:opacity-50 disabled:cursor-not-allowed" ${disableCheck ? "disabled" : ""} ${isChecked} title="${tooltipCheck}">
+            </td>
+            <td class="py-2 px-3 text-center border-r border-slate-100 dark:border-slate-700/30 align-middle">${badgeEtapa}</td>
+            <td class="py-2 px-4 align-middle">${nomeHtml}</td>
+            <td class="py-2 px-4 font-mono font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap align-middle">${veiculoHtml}</td>
+            <td class="py-2 px-4 whitespace-nowrap align-middle text-center">${htmlDisparos}</td>
+            <td class="py-2 px-4 whitespace-nowrap text-xs align-middle">${contatoHtml}</td>
+            <td class="py-2 px-4 bg-amber-50/50 dark:bg-amber-900/10 border-l border-amber-100/50 dark:border-amber-900/20 align-middle">${htmlLocalizacao}</td>
+        </tr>`;
+      });
+      
+      if(tabela) tabela.classList.remove('hidden');
+    }
+
+    // =======================================================================
+    // SELEÇÃO E AÇÕES EM LOTE (CANCELAMENTOS)
+    // =======================================================================
+    function updateSelCanc(chk) { 
+        const val = chk.getAttribute('data-id'); 
+        if (chk.checked) selectionSetCanc.add(val); 
+        else selectionSetCanc.delete(val); 
+        
+        const cont = document.getElementById('contadorSelCanc'); 
+        if(cont) cont.innerText = selectionSetCanc.size; 
+    }
+    
+    function marcarTodosCancelamento(m) { 
+        document.querySelectorAll('.chk-canc:not([disabled])').forEach(c => { 
+            c.checked = m.checked; 
+            const val = c.getAttribute('data-id'); 
+            if (m.checked) selectionSetCanc.add(val); 
+            else selectionSetCanc.delete(val); 
+        }); 
+        
+        const cont = document.getElementById('contadorSelCanc'); 
+        if(cont) cont.innerText = selectionSetCanc.size; 
+    }
+
+    function dispararLoteCancelamento() {
+      const alvos = cacheFilaCancBase.filter(c => selectionSetCanc.has(c.idUnico));
+      if(alvos.length === 0) return aviso('⚠️ Marque os clientes de cancelamento primeiro.');
+      
+      const selectResp = document.getElementById('selectResponsavelFila');
+      const resp = selectResp ? selectResp.value : "Sistema"; 
+      const grupos = [];
+      
+      alvos.forEach(cli => {
+        if(!cli.email) return;
+        grupos.push({
+           email: cli.email, 
+           nome: cli.nome, 
+           telefone: cli.telefone, 
+           fipe: cli.fipe, 
+           etapaNum: "CANCELAMENTO", 
+           veiculos: [cli.placa || cli.chassi], 
+           veiculosStr: cli.placa || cli.chassi, 
+           linhas: [cli], 
+           isErroEmail: false, 
+           isEnviado: cli.isEnviado
+        });
+      });
+      
+      if(grupos.length === 0) return aviso("⚠️ Selecionados não possuem E-mail válido.");
+      
+      window.gruposParaEnvio = grupos; 
+      window.respParaEnvio = resp;
+      aviso("⏳ Analisando regras de Cancelamento...", 60000);
+      
+      google.script.run
+        .withSuccessHandler(res => {
+             if(typeof renderizarModalPreview === 'function') renderizarModalPreview(res);
+        })
+        .withFailureHandler(err => {
+             aviso("❌ Erro ao processar o pipeline: " + err.message);
+        })
+        .obterPreviewDisparoAgrupadoWeb(grupos);
+    }
+
+    async function rodarAutomacaoCanc(comando) {
+      const alvos = cacheFilaCancBase.filter(c => selectionSetCanc.has(c.idUnico));
+      if(alvos.length === 0) return aviso('⚠️ Selecione os clientes marcando a caixinha.');
+      
+      const mod = document.getElementById('modal-progresso');
+      const bar = document.getElementById('barra-progresso');
+      const cnt = document.getElementById('contador-progresso');
+      const pct = document.getElementById('percentual-progresso');
+      const dsc = document.getElementById('desc-progresso');
+      
+      if(mod) mod.classList.remove('hidden'); 
+      if(bar) bar.style.width = '0%'; 
+      if(cnt) cnt.innerText = `0 / ${alvos.length}`; 
+      if(pct) pct.innerText = '0%'; 
+      if(dsc) dsc.innerText = 'Comunicando com a API SGA...';
+      
+      let suc = 0, err = 0;
+      
+      for (let i = 0; i < alvos.length; i++) {
+        if(dsc) dsc.innerText = `Baixando dados: ${alvos[i].nome || alvos[i].placa}`;
+        try { 
+           const res = await new Promise((resolve, reject) => { 
+               google.script.run
+                   .withSuccessHandler(resolve)
+                   .withFailureHandler(reject)
+                   .web_completarItemCancelamento(alvos[i].idUnico); 
+           });
+           if (res.status === 'ok') suc++; else err++; 
+        } catch (e) { 
+           err++; 
+        }
+        
+        const p = Math.round(((i + 1) / alvos.length) * 100); 
+        if(bar) bar.style.width = `${p}%`; 
+        if(cnt) cnt.innerText = `${i + 1} / ${alvos.length}`; 
+        if(pct) pct.innerText = `${p}%`;
+      }
+      
+      if(dsc) dsc.innerText = 'Finalizando...'; 
+      
+      setTimeout(() => { 
+          if(mod) mod.classList.add('hidden'); 
+          aviso(`✅ Atualização Concluída!\n${suc} completados.\n${err} ignorados/erros.`, 8000); 
+          selectionSetCanc.clear(); 
+          const c = document.getElementById('contadorSelCanc'); 
+          if(c) c.innerText = 0; 
+          carregarFilaCancelamento(); 
+      }, 800);
+    }
+</script>

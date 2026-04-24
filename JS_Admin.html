@@ -1,0 +1,495 @@
+<script>
+    console.log("🟢 [ZENFLOW] Módulo JS_Admin carregado.");
+
+    // =======================================================================
+    // CONFIGURAÇÕES GERAIS DO SISTEMA
+    // =======================================================================
+    function carregarConfigs() { 
+        google.script.run
+            .withSuccessHandler(c => { 
+                const d = document.getElementById('corpo-config'); 
+                if(!d) return;
+                d.innerHTML = ""; 
+                c.forEach(cfg => { 
+                    d.innerHTML += `<div class="bg-white dark:bg-darkcard p-6 rounded-2xl border border-slate-200 dark:border-darkborder shadow-sm mb-6 transition"><div class="flex justify-between items-center mb-4"><h3 class="font-black text-slate-800 dark:text-white text-lg flex items-center gap-2"><span class="text-indigo-500">📝</span> ${cfg.chave}</h3><button onclick="salvarCfg(${cfg.linhaOriginal}, 'txt-${cfg.linhaOriginal}')" id="btn-cfg-${cfg.linhaOriginal}" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-bold shadow-md transition flex items-center gap-2 transform hover:-translate-y-0.5">💾 Salvar</button></div><textarea id="txt-${cfg.linhaOriginal}" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-5 text-sm font-mono text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500 transition" rows="6">${cfg.texto}</textarea></div>`; 
+                }); 
+            })
+            .solicitarDadosWeb('config'); 
+    }
+
+    function salvarCfg(l, id) { 
+        const btn = document.getElementById('btn-cfg-' + l); 
+        if(btn) { btn.innerHTML = "⏳ Salvando..."; btn.disabled = true; } 
+        
+        const txtEl = document.getElementById(id);
+        if(!txtEl) return;
+
+        google.script.run
+            .withSuccessHandler(res => { 
+                if(typeof aviso === 'function') aviso(res); 
+                if(btn) { btn.innerHTML = "💾 Salvar"; btn.disabled = false; } 
+            })
+            .withFailureHandler(err => { 
+                if(typeof aviso === 'function') aviso("❌ Erro: " + err.message); 
+                if(btn) { btn.innerHTML = "💾 Salvar"; btn.disabled = false; } 
+            })
+            .salvarConfiguracaoWeb(l, txtEl.value); 
+    }
+
+    // =======================================================================
+    // AUDITORIA DE LOGS GERAIS
+    // =======================================================================
+    function aplicarFiltrosLogs() {
+      const elE = document.getElementById('filtroLogEtapa'); 
+      const fE = elE ? elE.value : 'todas';
+      
+      const elC = document.getElementById('filtroLogConclusao'); 
+      const fC = elC ? elC.value : 'todos';
+      
+      const elS = document.getElementById('filtroLogSituacao'); 
+      const fS = elS ? elS.value : 'todos';
+      
+      const elErr = document.getElementById('filtroLogErro'); 
+      const fErr = elErr ? elErr.value : 'todos';
+      
+      const iptBuscaLog = document.getElementById('ipt-busca-log');
+      const termoBuscaLog = iptBuscaLog ? iptBuscaLog.value.toLowerCase().trim() : "";
+
+      cacheLogsFiltrados = cacheLogsBase.linhas.filter(l => {
+        let p = true;
+        if (fE !== 'todas' && String(l.etapa) !== fE) p = false;
+        if (fS === 'ativos' && l.isInativo) p = false;
+        if (fS === 'inativos' && !l.isInativo) p = false;
+        if (fErr === 'com_erro' && !l.isErro) p = false;
+        if (fErr === 'sem_erro' && l.isErro) p = false;
+        if (fC === 'concluidos' && !l.isConcluido) p = false;
+        if (fC === 'pendentes' && l.isConcluido) p = false;
+        
+        if (p && termoBuscaLog !== "") {
+            const conteudoLinha = l.htmlArr.join(" ").toLowerCase();
+            if (!conteudoLinha.includes(termoBuscaLog)) p = false;
+        }
+        return p;
+      });
+      currentLogPage = 1; 
+      renderTabelaLogs();
+    }
+    
+    function carregarDadosDoLog() { 
+        const loading = document.getElementById('loading-logs');
+        const tabela = document.getElementById('tabela-logs');
+        
+        if(loading) loading.classList.remove('hidden'); 
+        if(tabela) tabela.classList.add('hidden'); 
+        
+        google.script.run
+            .withSuccessHandler(res => { 
+                if(loading) loading.classList.add('hidden'); 
+                cacheLogsBase = res; 
+                aplicarFiltrosLogs(); 
+            })
+            .solicitarDadosWeb('logs'); 
+    }
+
+    function mudarPaginacaoLogs() { 
+        const el = document.getElementById('selectRowsPerLogPage'); 
+        if(el) rowsPerLogPage = el.value; 
+        currentLogPage = 1; 
+        renderTabelaLogs(); 
+    }
+
+    function prevPageLogs() { 
+        if(currentLogPage > 1) { 
+            currentLogPage--; 
+            renderTabelaLogs(); 
+        } 
+    }
+
+    function nextPageLogs() { 
+        const l = rowsPerLogPage === 'todos' ? cacheLogsFiltrados.length : parseInt(rowsPerLogPage); 
+        if(currentLogPage * l < cacheLogsFiltrados.length) { 
+            currentLogPage++; 
+            renderTabelaLogs(); 
+        } 
+    }
+    
+    function renderTabelaLogs() {
+      if(!cacheLogsBase.colunas) return; 
+      
+      const hL = document.getElementById('head-logs'); 
+      if (hL) hL.innerHTML = '<tr>' + cacheLogsBase.colunas.map(c => '<th class="px-6 py-4">' + c + '</th>').join('') + '</tr>'; 
+      
+      const t = cacheLogsFiltrados.length;
+      const bL = document.getElementById('corpo-logs');
+      
+      if(t === 0) { 
+          if(bL) bL.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-500 dark:text-slate-400 font-bold text-lg">Nenhum registro atende aos filtros atuais.</td></tr>`; 
+      } else { 
+          const l = rowsPerLogPage === 'todos' ? t : parseInt(rowsPerLogPage);
+          const s = (currentLogPage - 1) * l;
+          const e = Math.min(s + l, t);
+          const d = cacheLogsFiltrados.slice(s, e); 
+          
+          if (bL) {
+              bL.innerHTML = d.map(r => '<tr class="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">' + r.htmlArr.map(c => '<td class="px-6 py-4">' + c + '</td>').join('') + '</tr>').join(''); 
+          }
+          
+          const pIL = document.getElementById('pageInfoLogs'); 
+          if(pIL) pIL.innerText = `Mostrando ${s + 1} a ${e} de ${t}`; 
+          
+          const btnPL = document.getElementById('btnPrevLogs'); 
+          if(btnPL) btnPL.disabled = currentLogPage === 1; 
+          
+          const btnNL = document.getElementById('btnNextLogs'); 
+          if(btnNL) btnNL.disabled = currentLogPage * l >= t; 
+      }
+      
+      const pB = document.getElementById('paginacaoBoxLogs'); 
+      if(pB) pB.classList.remove('hidden'); 
+      
+      const tbL = document.getElementById('tabela-logs'); 
+      if(tbL) tbL.classList.remove('hidden');
+    }
+
+    // =======================================================================
+    // GESTÃO DE TÉCNICOS
+    // =======================================================================
+    function setSortTecnicos(col) { 
+        if (colunaOrdenacaoTec === col) { 
+            ordemAscendenteTec = !ordemAscendenteTec; 
+        } else { 
+            colunaOrdenacaoTec = col; 
+            ordemAscendenteTec = true; 
+        } 
+        
+        document.querySelectorAll('[id^="sort-tec-"]').forEach(i => { 
+            i.innerHTML = ""; 
+            i.parentElement.classList.remove('sort-active'); 
+        }); 
+        
+        const at = document.getElementById(`sort-tec-${col}`); 
+        if (at) { 
+            at.innerHTML = ordemAscendenteTec ? "▲" : "▼"; 
+            at.parentElement.classList.add('sort-active'); 
+        } 
+        renderizarTabelaTecnicos(); 
+    }
+
+    function renderizarTabelaTecnicos() {
+      const corpo = document.getElementById('corpo-tecnicos'); 
+      if (!corpo) return; 
+      
+      corpo.innerHTML = "";
+      
+      if (!cacheTecnicosGeral || cacheTecnicosGeral.length === 0) { 
+          corpo.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-500 dark:text-slate-400 font-bold text-lg">Nenhum técnico cadastrado.</td></tr>`; 
+          return; 
+      }
+      
+      let dOrd = [...cacheTecnicosGeral]; 
+      dOrd.sort((a, b) => { 
+          let vA = (a[colunaOrdenacaoTec] || "").toString().toLowerCase(); 
+          let vB = (b[colunaOrdenacaoTec] || "").toString().toLowerCase(); 
+          if (vA < vB) return ordemAscendenteTec ? -1 : 1; 
+          if (vA > vB) return ordemAscendenteTec ? 1 : -1; 
+          return 0; 
+      });
+      
+      dOrd.forEach((tec) => {
+        const tLoc = `Cidade: ${tec.cidade || '-'}\nBairro: ${tec.bairro || '-'}`;
+        let bT = tec.tipo === 'Base' ? `<span class="bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 px-2 py-1 rounded text-[10px] font-black uppercase border border-blue-200 dark:border-blue-800" title="Base Física">🏢 BASE</span>` : tec.tipo === 'Outros Estados' ? `<span class="bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300 px-2 py-1 rounded text-[10px] font-black uppercase border border-purple-200 dark:border-purple-800" title="Outros Estados">✈️ OUTROS</span>` : `<span class="bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300 px-2 py-1 rounded text-[10px] font-black uppercase border border-orange-200 dark:border-orange-800" title="Técnico Volante">🚗 VOLANTE</span>`;
+        corpo.innerHTML += `<tr class="hover:bg-indigo-50 dark:hover:bg-slate-700/50 bg-white dark:bg-darkcard transition border-b border-slate-100 dark:border-slate-800/60"><td class="py-2.5 px-4 align-middle"><span class="font-black text-slate-800 dark:text-slate-200 text-sm truncate max-w-[200px]" title="${tec.nome}">${tec.nome}</span></td><td class="py-2.5 px-4 align-middle">${bT}</td><td class="py-2.5 px-4 align-middle text-center"><div class="cursor-help font-black text-[11px] text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition shadow-sm w-max mx-auto" title="${tLoc}">📍 ${tec.estado || '-'}</div></td><td class="py-2.5 px-4 font-mono text-slate-600 dark:text-slate-400 text-xs align-middle">${tec.telefone || "---"}</td><td class="py-2.5 px-4 align-middle"><div class="flex items-center justify-center gap-2"><button onclick="abrirModalTecnico(${tec.linha})" class="bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-800/60 text-indigo-700 dark:text-indigo-400 px-2.5 py-1.5 rounded font-bold transition text-[10px] border border-indigo-200 dark:border-indigo-800/50 shadow-sm flex items-center gap-1">✏️ Editar</button><button onclick="excluirTecnico(${tec.linha})" class="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 bg-rose-50 dark:bg-rose-900/20 font-bold transition text-[10px] px-2.5 py-1.5 rounded border border-rose-200 dark:border-rose-800/50 shadow-sm flex items-center gap-1">🗑️ Remover</button></div></td></tr>`;
+      });
+    }
+
+    function carregarTecnicos() { 
+        const loading = document.getElementById('loading-tecnicos');
+        const tabela = document.getElementById('tabela-tecnicos');
+        
+        if (loading) loading.classList.remove('hidden'); 
+        if (tabela) tabela.classList.add('hidden'); 
+        
+        google.script.run
+            .withSuccessHandler(d => { 
+                if (loading) loading.classList.add('hidden'); 
+                if (d && d.erro) {
+                    if(typeof aviso === 'function') aviso("❌ " + d.erro, 10000); 
+                    return;
+                }
+                
+                cacheTecnicosGeral = d; 
+                renderizarTabelaTecnicos(); 
+                
+                const iP = document.getElementById('sort-tec-nome'); 
+                if (iP) { 
+                    iP.innerHTML = "▲"; 
+                    iP.parentElement.classList.add('sort-active'); 
+                } 
+                if (tabela) tabela.classList.remove('hidden'); 
+            })
+            .withFailureHandler(e => { 
+                if (loading) loading.classList.add('hidden'); 
+                if(typeof aviso === 'function') aviso("❌ Erro: " + e.message, 10000); 
+            })
+            .solicitarDadosWeb('tecnicos'); 
+    }
+
+    function abrirModalTecnico(l = null) {
+      ['ipt-tec-cep', 'ipt-tec-nome', 'ipt-tec-end', 'ipt-tec-num', 'ipt-tec-bairro', 'ipt-tec-cidade', 'ipt-tec-estado', 'ipt-tec-tel', 'ipt-tec-tipo'].forEach(id => { 
+          const el = document.getElementById(id); 
+          if (el) el.classList.remove('bg-emerald-50', 'dark:bg-emerald-900/20', 'border-emerald-400'); 
+      });
+      
+      const titulo = document.getElementById('titulo-modal-tecnico');
+      const iptLinha = document.getElementById('ipt-tec-linha');
+      
+      if (l) { 
+          const t = cacheTecnicosGeral.find(x => x.linha === l); 
+          if (!t) return; 
+          
+          if(titulo) titulo.innerText = "✏️ Editar Técnico"; 
+          if(iptLinha) iptLinha.value = l; 
+          
+          const setVal = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+          setVal('ipt-tec-nome', t.nome);
+          setVal('ipt-tec-tipo', t.tipo || "Volante");
+          setVal('ipt-tec-end', t.endereco);
+          setVal('ipt-tec-num', t.numero);
+          setVal('ipt-tec-bairro', t.bairro);
+          setVal('ipt-tec-cidade', t.cidade);
+          setVal('ipt-tec-estado', t.estado);
+          setVal('ipt-tec-cep', t.cep);
+          setVal('ipt-tec-tel', t.telefone);
+      } else { 
+          if(titulo) titulo.innerText = "➕ Cadastrar Técnico"; 
+          if(iptLinha) iptLinha.value = ""; 
+          
+          ['ipt-tec-cep', 'ipt-tec-nome', 'ipt-tec-end', 'ipt-tec-num', 'ipt-tec-bairro', 'ipt-tec-cidade', 'ipt-tec-estado', 'ipt-tec-tel'].forEach(id => { 
+              const el = document.getElementById(id); 
+              if (el) el.value = ""; 
+          }); 
+          
+          const tipoEl = document.getElementById('ipt-tec-tipo'); 
+          if (tipoEl) tipoEl.value = "Volante"; 
+      }
+      const modT = document.getElementById('modal-tecnico'); 
+      if(modT) modT.classList.remove('hidden'); 
+    }
+
+    function fecharModalTecnico() { 
+        const modT = document.getElementById('modal-tecnico'); 
+        if (modT) modT.classList.add('hidden'); 
+    }
+
+    function buscarCepFormulario() { 
+        const cepEl = document.getElementById('ipt-tec-cep');
+        if (!cepEl) return;
+        
+        const cR = cepEl.value.replace(/\D/g, ''); 
+        if (cR.length !== 8) {
+            if(typeof aviso === 'function') aviso("⚠️ CEP inválido.");
+            return;
+        }
+        
+        const btn = document.getElementById('btn-busca-cep'); 
+        if(btn) { btn.innerHTML = "⏳..."; btn.disabled = true; }
+        
+        fetch(`https://viacep.com.br/ws/${cR}/json/`)
+            .then(r => r.json())
+            .then(d => { 
+                if(btn) { btn.innerHTML = "🔍 Buscar"; btn.disabled = false; }
+                if (d.erro) {
+                    if(typeof aviso === 'function') aviso("❌ CEP não encontrado.");
+                    return;
+                }
+                
+                [{ id: 'ipt-tec-end', v: d.logradouro }, { id: 'ipt-tec-bairro', v: d.bairro }, { id: 'ipt-tec-cidade', v: d.localidade }, { id: 'ipt-tec-estado', v: d.uf }].forEach(c => { 
+                    const el = document.getElementById(c.id); 
+                    if (el) { 
+                        el.value = c.v || ""; 
+                        el.classList.add('bg-emerald-50', 'dark:bg-emerald-900/20', 'border-emerald-400'); 
+                    } 
+                }); 
+                
+                const numEl = document.getElementById('ipt-tec-num');
+                if(numEl) numEl.focus(); 
+                if(typeof aviso === 'function') aviso("✅ Endereço preenchido."); 
+            })
+            .catch(e => { 
+                if(btn) { btn.innerHTML = "🔍 Buscar"; btn.disabled = false; }
+                if(typeof aviso === 'function') aviso("❌ Erro ViaCEP."); 
+            }); 
+    }
+
+    function salvarTecnicoFormulario() { 
+        const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
+        
+        const p = { 
+            nome: getVal('ipt-tec-nome'), 
+            tipo: getVal('ipt-tec-tipo'), 
+            endereco: getVal('ipt-tec-end'), 
+            numero: getVal('ipt-tec-num'), 
+            bairro: getVal('ipt-tec-bairro'), 
+            cidade: getVal('ipt-tec-cidade'), 
+            estado: getVal('ipt-tec-estado').toUpperCase(), 
+            cep: getVal('ipt-tec-cep'), 
+            telefone: getVal('ipt-tec-tel') 
+        }; 
+        
+        if (!p.nome) {
+            if(typeof aviso === 'function') aviso("⚠️ Nome obrigatório.");
+            return;
+        }
+        
+        const l = getVal('ipt-tec-linha'); 
+        const btn = document.getElementById('btn-salvar-tec'); 
+        
+        if(btn) { btn.innerHTML = "Salvando..."; btn.disabled = true; }
+        
+        if (l) { 
+            google.script.run
+                .withSuccessHandler(r => { 
+                    if(typeof aviso === 'function') aviso(r); 
+                    if(btn) { btn.innerHTML = "💾 Salvar Dados"; btn.disabled = false; }
+                    fecharModalTecnico(); 
+                    carregarTecnicos(); 
+                })
+                .withFailureHandler(e => { 
+                    if(typeof aviso === 'function') aviso("❌ " + e.message); 
+                    if(btn) { btn.innerHTML = "💾 Salvar Dados"; btn.disabled = false; }
+                })
+                .web_atualizarTecnico(l, p); 
+        } else { 
+            google.script.run
+                .withSuccessHandler(r => { 
+                    if(typeof aviso === 'function') aviso(r); 
+                    if(btn) { btn.innerHTML = "💾 Salvar Dados"; btn.disabled = false; }
+                    fecharModalTecnico(); 
+                    carregarTecnicos(); 
+                })
+                .withFailureHandler(e => { 
+                    if(typeof aviso === 'function') aviso("❌ " + e.message); 
+                    if(btn) { btn.innerHTML = "💾 Salvar Dados"; btn.disabled = false; }
+                })
+                .web_adicionarTecnico(p); 
+        } 
+    }
+
+    function excluirTecnico(l) { 
+        const t = cacheTecnicosGeral.find(x => x.linha === l); 
+        if(!t) return; 
+        
+        if(confirm(`Excluir "${t.nome}"?`)) { 
+            if(typeof aviso === 'function') aviso("🗑️ Removendo..."); 
+            google.script.run
+                .withSuccessHandler(r => { 
+                    if(typeof aviso === 'function') aviso(r); 
+                    carregarTecnicos(); 
+                })
+                .web_removerTecnico(l); 
+        } 
+    }
+
+    // =======================================================================
+    // GESTÃO DE USUÁRIOS
+    // =======================================================================
+    function carregarUsuarios() {
+      const ld = document.getElementById('loading-usuarios'); 
+      if(ld) ld.classList.remove('hidden'); 
+      const tu = document.getElementById('tabela-usuarios'); 
+      if(tu) tu.classList.add('hidden');
+      
+      google.script.run
+        .withSuccessHandler(dados => {
+            if(ld) ld.classList.add('hidden'); 
+            cacheUsuarios = dados; 
+            const corpo = document.getElementById('corpo-usuarios'); 
+            if(!corpo) return;
+            corpo.innerHTML = "";
+            
+            if(cacheUsuarios.length === 0) { 
+                corpo.innerHTML = `<tr><td colspan="5" class="px-6 py-16 text-center text-slate-500 font-bold">Nenhum usuário.</td></tr>`; 
+            } else {
+               cacheUsuarios.forEach(u => {
+                  const corNivel = u.nivel === 'ADMINISTRADOR' ? 'text-rose-600 bg-rose-100 dark:bg-rose-900/30 border-rose-300' : 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 border-blue-300';
+                  corpo.innerHTML += `<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800/60 transition"><td class="py-3 px-4 font-black text-slate-800 dark:text-white">${u.nome}</td><td class="py-3 px-4 font-mono text-slate-600 dark:text-slate-400">${u.login}</td><td class="py-3 px-4 text-center"><span class="px-2.5 py-1 text-[10px] font-black uppercase rounded border ${corNivel}">${u.nivel}</span></td><td class="py-3 px-4 text-center font-mono text-xs text-slate-500">${u.sgaUser || '---'}</td><td class="py-3 px-4 text-center"><div class="flex items-center justify-center gap-2"><button onclick="resetarSenhaUsuario(${u.linha})" class="text-amber-600 hover:text-amber-700 bg-amber-50 dark:bg-amber-900/20 font-bold px-2.5 py-1.5 rounded border border-amber-200 dark:border-amber-800/50 text-[10px]" title="Forçar senha padrão ZEN0102*">🔄 Reset</button><button onclick="excluirUsuario(${u.linha})" class="text-rose-500 hover:text-rose-700 bg-rose-50 dark:bg-rose-900/20 font-bold px-2.5 py-1.5 rounded border border-rose-200 dark:border-rose-800/50 text-[10px]">🗑️ Excluir</button></div></td></tr>`;
+               });
+            }
+            if(tu) tu.classList.remove('hidden');
+        })
+        .web_obterUsuarios();
+    }
+
+    function abrirModalUsuario() { 
+        const setVal = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+        setVal('ipt-usr-nome', ""); 
+        setVal('ipt-usr-login', ""); 
+        setVal('ipt-usr-sga-user', ""); 
+        setVal('ipt-usr-sga-pass', ""); 
+        setVal('ipt-usr-nivel', "Operador"); 
+        
+        const mod = document.getElementById('modal-usuario');
+        if(mod) mod.classList.remove('hidden'); 
+    }
+
+    function fecharModalUsuario() { 
+        const mod = document.getElementById('modal-usuario');
+        if(mod) mod.classList.add('hidden'); 
+    }
+
+    function salvarUsuarioFormulario() {
+      const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
+      
+      const p = { 
+          nome: getVal('ipt-usr-nome'), 
+          login: getVal('ipt-usr-login').toLowerCase(), 
+          nivel: getVal('ipt-usr-nivel'), 
+          sgaUser: getVal('ipt-usr-sga-user'), 
+          sgaPass: getVal('ipt-usr-sga-pass') 
+      };
+      
+      if(!p.nome || !p.login) {
+          if(typeof aviso === 'function') aviso("⚠️ Nome e Login são obrigatórios.");
+          return;
+      }
+      
+      const btn = document.getElementById('btn-salvar-usr'); 
+      if(btn) { btn.innerHTML = "⏳ Salvando..."; btn.disabled = true; }
+      
+      google.script.run
+        .withSuccessHandler(res => { 
+            if(typeof aviso === 'function') aviso(res, 6000); 
+            if(btn) { btn.innerHTML = "Salvar Usuário"; btn.disabled = false; }
+            fecharModalUsuario(); 
+            carregarUsuarios(); 
+        })
+        .withFailureHandler(err => { 
+            if(typeof aviso === 'function') aviso("❌ " + err.message); 
+            if(btn) { btn.innerHTML = "Salvar Usuário"; btn.disabled = false; }
+        })
+        .web_adicionarUsuario(p);
+    }
+
+    function excluirUsuario(linha) { 
+        if(!confirm("Atenção! Excluir o acesso deste usuário definitivamente?")) return; 
+        if(typeof aviso === 'function') aviso("⏳ Removendo..."); 
+        
+        google.script.run
+            .withSuccessHandler(res => { 
+                if(typeof aviso === 'function') aviso(res); 
+                carregarUsuarios(); 
+            })
+            .web_removerUsuario(linha); 
+    }
+
+    function resetarSenhaUsuario(linha) { 
+        if(!confirm("Atenção! Isso fará a senha do usuário voltar para o padrão ZEN0102*. Deseja continuar?")) return; 
+        if(typeof aviso === 'function') aviso("⏳ Resetando..."); 
+        
+        google.script.run
+            .withSuccessHandler(res => { 
+                if(typeof aviso === 'function') aviso(res, 6000); 
+            })
+            .web_resetarSenha(linha); 
+    }
+</script>

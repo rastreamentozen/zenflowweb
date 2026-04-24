@@ -1,0 +1,161 @@
+<script>
+    console.log("🟢 [ZENFLOW] Módulo JS_Dashboard carregado.");
+
+    // =======================================================================
+    // DASHBOARD BI - INDICADORES E GRÁFICOS (CHART.JS)
+    // =======================================================================
+    function carregarDashboard() {
+      const loadingDash = document.getElementById('loading-dash');
+      if (loadingDash) loadingDash.classList.remove('hidden');
+      
+      google.script.run
+        .withSuccessHandler(stats => {
+            if (loadingDash) loadingDash.classList.add('hidden'); 
+            if (stats && stats.erro) return aviso("Aviso BI: " + stats.erro); 
+            
+            window.currentStats = stats; 
+            
+            // Função utilitária segura para setar texto sem erro de null
+            const setText = (id, valor) => { 
+                const el = document.getElementById(id); 
+                if(el) el.innerText = valor; 
+            };
+            
+            // Preenchimento de KPIs - Pendentes
+            setText('kpi-pendentes', stats.kpis.pendentesTotal); 
+            setText('kpi-pend-e1', stats.kpis.pendentesEtapa['1']); 
+            setText('kpi-pend-e2', stats.kpis.pendentesEtapa['2']); 
+            setText('kpi-pend-e3', stats.kpis.pendentesEtapa['3']);
+            
+            // Preenchimento de KPIs - E-mails Enviados
+            setText('kpi-email-total', stats.kpis.emails.total); 
+            setText('kpi-email-hoje', stats.kpis.emails.hoje); 
+            setText('kpi-email-sem', stats.kpis.emails.semana); 
+            setText('kpi-email-mes', stats.kpis.emails.mes);
+            
+            // Preenchimento de KPIs - WhatsApps Enviados
+            setText('kpi-whats-total', stats.kpis.whats.total); 
+            setText('kpi-whats-hoje', stats.kpis.whats.hoje); 
+            setText('kpi-whats-sem', stats.kpis.whats.semana); 
+            setText('kpi-whats-mes', stats.kpis.whats.mes);
+            
+            // Preenchimento de KPIs - Conclusões (SGA Code 1)
+            setText('kpi-concluidos', stats.kpis.conclusaoTotal); 
+            setText('kpi-conc-e1', stats.kpis.conclusaoEtapa['1']); 
+            setText('kpi-conc-e2', stats.kpis.conclusaoEtapa['2']); 
+            setText('kpi-conc-e3', stats.kpis.conclusaoEtapa['3']);
+            
+            // Tratamento visual para o Dark Mode do Tailwind
+            const isDark = document.documentElement.classList.contains('dark');
+            const gridColor = isDark ? '#334155' : '#e2e8f0';
+            const textColor = isDark ? '#94a3b8' : '#64748b'; 
+            
+            // Renderização de Gráficos (Apenas se a lib Chart estiver injetada na página)
+            if (typeof Chart !== 'undefined') {
+                Chart.defaults.color = textColor; 
+                Chart.defaults.borderColor = gridColor;
+                
+                const labelsHist = Object.keys(stats.graficos.historicoMensal).sort((a,b) => stats.graficos.historicoMensal[a].sortKey - stats.graficos.historicoMensal[b].sortKey); 
+                
+                const buildChart = (id, chartVar, config) => { 
+                    const ctx = document.getElementById(id); 
+                    if(ctx) { 
+                        if(window[chartVar]) window[chartVar].destroy(); 
+                        window[chartVar] = new Chart(ctx.getContext('2d'), config); 
+                    } 
+                };
+
+                // 1. Gráfico de Linha (Evolução Histórica)
+                buildChart('chartHistorico', 'cHistorico', { 
+                    type: 'line', 
+                    data: { 
+                        labels: labelsHist, 
+                        datasets: [
+                            { label: 'E-mails', data: labelsHist.map(k => stats.graficos.historicoMensal[k].email), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 3, fill: true, tension: 0.4 },
+                            { label: 'WhatsApps', data: labelsHist.map(k => stats.graficos.historicoMensal[k].whats), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderWidth: 3, fill: true, tension: 0.4 }
+                        ] 
+                    }, 
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, grid: { color: gridColor } }, x: { grid: { display: false } } } } 
+                });
+                
+                // 2. Gráfico de Barras (Envios por Etapa)
+                buildChart('chartEnviosEtapa', 'cEnviosEtapa', { 
+                    type: 'bar', 
+                    data: { 
+                        labels: ['E1 (Boas Vindas)', 'E2 (Alerta 5D)', 'E3 (Expirado)'], 
+                        datasets: [
+                            { label: 'E-mails', data: [stats.kpis.emails.etapa['1'], stats.kpis.emails.etapa['2'], stats.kpis.emails.etapa['3']], backgroundColor: '#3b82f6', borderRadius: 4 },
+                            { label: 'WhatsApps', data: [stats.kpis.whats.etapa['1'], stats.kpis.whats.etapa['2'], stats.kpis.whats.etapa['3']], backgroundColor: '#10b981', borderRadius: 4 }
+                        ] 
+                    }, 
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, grid: { color: gridColor } }, x: { grid: { display: false } } } } 
+                });
+                
+                // 3. Gráfico Doughnut (Volume de Pendentes)
+                buildChart('chartPendentes', 'cPendentes', { 
+                    type: 'doughnut', 
+                    data: { 
+                        labels: ['E1 (Boas Vindas)', 'E2 (Alerta 5D)', 'E3 (Expirado)'], 
+                        datasets: [{ data: [stats.kpis.pendentesEtapa['1'], stats.kpis.pendentesEtapa['2'], stats.kpis.pendentesEtapa['3']], backgroundColor: ['#6366f1', '#f59e0b', '#f43f5e'], borderWidth: 0, hoverOffset: 4 }] 
+                    }, 
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } } 
+                });
+                
+                // 4. Gráfico Pie (Conclusões de Vendas/Instalações)
+                buildChart('chartConclusao', 'cConclusao', { 
+                    type: 'pie', 
+                    data: { 
+                        labels: ['E1 (Boas Vindas)', 'E2 (Alerta 5D)', 'E3 (Expirado)'], 
+                        datasets: [{ data: [stats.kpis.conclusaoEtapa['1'], stats.kpis.conclusaoEtapa['2'], stats.kpis.conclusaoEtapa['3']], backgroundColor: ['#8b5cf6', '#0ea5e9', '#ec4899'], borderWidth: 0, hoverOffset: 4 }] 
+                    }, 
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } 
+                });
+                
+                // 5. Gráfico de Barras Horizontal (Rank de Equipe)
+                buildChart('chartEquipe', 'cEquipe', { 
+                    type: 'bar', 
+                    data: { 
+                        labels: Object.keys(stats.graficos.equipeMes), 
+                        datasets: [{ data: Object.values(stats.graficos.equipeMes), backgroundColor: '#64748b', borderRadius: 4 }] 
+                    }, 
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: gridColor } }, x: { grid: { display: false } } } } 
+                });
+            }
+        })
+        .withFailureHandler(err => {
+            if (loadingDash) loadingDash.classList.add('hidden'); 
+            aviso("❌ Erro ao carregar Dashboard: " + err.message);
+        })
+        .solicitarDadosWeb('dashboard');
+    }
+
+    // =======================================================================
+    // EXPORTAÇÃO PARA APRESENTAÇÃO (GOOGLE SLIDES)
+    // =======================================================================
+    function gerarApresentacaoSlides() {
+      aviso("⏳ Capturando gráficos e gerando Google Slides...", 60000);
+      const graficosParaExportar = [];
+      
+      const pushGrafico = (id, titulo) => { 
+          const el = document.getElementById(id); 
+          if (el) graficosParaExportar.push({ titulo: titulo, base64: el.toDataURL('image/png') }); 
+      };
+      
+      // Captura o base64 dos canvas renderizados
+      pushGrafico('chartHistorico', 'Evolução Mensal'); 
+      pushGrafico('chartEnviosEtapa', 'Envios por Etapa'); 
+      pushGrafico('chartPendentes', 'Veículos Pendentes'); 
+      pushGrafico('chartEquipe', 'Desempenho de Equipe');
+      
+      google.script.run
+        .withSuccessHandler(res => { 
+            if(res.erro) return aviso("❌ Erro ao gerar slides: " + res.erro); 
+            aviso(`✅ Apresentação gerada!`, 5000); 
+            window.open(res.url, '_blank'); 
+        })
+        .withFailureHandler(err => {
+            aviso("❌ Erro de comunicação: " + err.message);
+        })
+        .exportarDashboardParaSlidesWeb(graficosParaExportar, window.currentStats);
+    }
+</script>
