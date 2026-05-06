@@ -141,6 +141,7 @@
       <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-3 mt-8">Operação</p>
       <button onclick="navegarFila(this)" class="nav-btn w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium">📥 Fila Unificada</button>
       <button onclick="navegarCancelamento(this)" class="nav-btn w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-rose-500 dark:text-rose-400 hover:bg-slate-800 transition">🚫 Cancelamentos</button>
+      <button onclick="navegar('tela-importar-canc', this)" class="nav-btn w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-indigo-500 dark:text-indigo-400 hover:bg-slate-800 transition">📥 Importar Canc.</button>
       <button onclick="navegar('tela-cadastro', this)" class="nav-btn w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium">➕ Importar Lote SGA</button>
       
       <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-3 mt-8">Administração</p>
@@ -201,8 +202,8 @@
            <div>
              <h3 class="text-xl font-black text-slate-800 dark:text-white mb-4 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2"><span class="text-rose-500">🚫</span> 4. Fila de Cancelamentos</h3>
              <ul class="space-y-3 text-sm text-slate-600 dark:text-slate-400">
-               <li><strong class="text-slate-800 dark:text-slate-200">Banco Independente:</strong> Use o botão "Puxar Inativos" para varrer a esteira e transferir automaticamente quem não for mais "Ativo" no SGA.</li>
-               <li><strong class="text-slate-800 dark:text-slate-200">Disparos Próprios:</strong> Possui um motor de envio de WhatsApp espelhado, focado apenas na retenção ou avisos de cancelamento.</li>
+               <li><strong class="text-slate-800 dark:text-slate-200">Banco Independente:</strong> Use a Importação Lateral para alimentar o banco isolado sem afetar a fila oficial.</li>
+               <li><strong class="text-slate-800 dark:text-slate-200">Disparos Próprios:</strong> Possui um motor de envio de E-mail/WhatsApp espelhado, focado apenas no cancelamento.</li>
              </ul>
            </div>
         </div>
@@ -287,6 +288,7 @@
       </div>
     </div>
 
+    <!-- TELA DE CANCELAMENTOS -->
     <div id="tela-cancelamento" class="h-full hidden flex-col p-4 overflow-hidden">
       <header class="bg-white dark:bg-darkcard shadow-sm p-3 flex justify-between items-center border border-slate-200 dark:border-darkborder rounded-xl shrink-0 z-[100] relative mb-2">
         <div class="flex flex-col">
@@ -294,14 +296,7 @@
           <p class="text-xs text-slate-500 dark:text-slate-400 font-medium"><span id="contadorSelCanc" class="font-bold text-rose-600 dark:text-rose-400 text-sm">0</span> marcados na memória</p>
         </div>
         <div class="flex gap-2 items-center">
-          <div class="relative">
-            <button onclick="toggleMenu('menu-auto-canc', event)" class="px-3 py-1.5 text-sm bg-slate-800 dark:bg-slate-700 text-white rounded-lg font-bold shadow-sm hover:bg-slate-700 transition flex items-center gap-1.5">⚡ Automação Lote ▾</button>
-            <div id="menu-auto-canc" class="menu-flutuante absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 hidden z-50 text-sm overflow-hidden transition-opacity duration-200">
-               <button onclick="rodarAutomacaoCanc('completar')" class="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 border-b border-slate-100 dark:border-slate-700/50 flex items-center gap-3 dark:text-slate-200 font-medium transition"><span class="text-base">📝</span> Completar Dados SGA</button>
-            </div>
-          </div>
-          <button onclick="acionarMigracaoInativos()" class="px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg font-bold shadow-sm shadow-purple-200 dark:shadow-none hover:bg-purple-700 transition flex items-center gap-1.5">⚡ Puxar Inativos da Fila</button>
-          <button onclick="carregarFilaCancelamento()" class="px-3 py-1.5 text-sm bg-white dark:bg-darkcard text-slate-700 dark:text-slate-200 rounded-lg font-bold border border-slate-300 dark:border-slate-600 shadow-sm hover:bg-slate-50 transition flex items-center gap-1.5">🔄 Sincronizar API</button>
+          <button onclick="rodarAutomacaoCanc('completar')" class="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-sm transition flex items-center gap-1.5">🤖 Completar Dados SGA</button>
           <button onclick="dispararLoteCancelamento()" class="px-4 py-1.5 text-sm bg-rose-600 text-white rounded-lg font-bold shadow-sm shadow-rose-200 dark:shadow-none hover:bg-rose-700 transition flex items-center gap-1.5">🚀 Disparar Cancelamento</button>
         </div>
       </header>
@@ -338,6 +333,53 @@
       </div>
     </div>
 
+    <!-- NOVA TELA: IMPORTAR CANCELAMENTOS -->
+    <div id="tela-importar-canc" class="hidden flex-col h-full bg-slate-50 dark:bg-[#0f121e]">
+        <div class="p-6 pb-0 flex flex-col justify-between items-start gap-4">
+            <div>
+                <h1 class="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                    <span class="text-indigo-500">📥</span> Importar Cancelamentos
+                </h1>
+                <p class="text-sm font-bold text-slate-500 dark:text-slate-400 mt-1">Cole os dados brutos do SGA. O sistema formata e salva no Banco de Dados.</p>
+            </div>
+        </div>
+
+        <div class="p-6 overflow-y-auto flex-1">
+            <div id="statusImportCanc" class="mb-6 p-4 rounded-xl text-sm font-bold hidden border shadow-sm"></div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Colar Texto (Blocos) -->
+                <div class="bg-white dark:bg-[#1e2336] border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
+                    <h3 class="font-black text-slate-800 dark:text-white mb-2 text-lg">Opção 1: Copiar e Colar (Blocos)</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mb-4 font-bold">Copie a lista direto do painel do SGA e cole abaixo.</p>
+                    <textarea id="txtImportCanc" class="w-full h-40 bg-slate-50 dark:bg-[#151a2d] border border-slate-300 dark:border-slate-600 rounded-xl p-4 font-mono text-[11px] text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="Cole as linhas aqui..."></textarea>
+                    <button id="btnTextoCanc" onclick="processarPastedDataCanc()" class="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition transform hover:-translate-y-0.5">Processar Texto Colado</button>
+                </div>
+
+                <!-- Arquivo XLS/HTML -->
+                <div class="bg-white dark:bg-[#1e2336] border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm flex flex-col">
+                    <h3 class="font-black text-slate-800 dark:text-white mb-2 text-lg">Opção 2: Arquivo SGA (HTM/XLS)</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mb-4 font-bold">Selecione o arquivo gerado pelo relatório do Hinova.</p>
+                    
+                    <div class="flex-1 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl flex items-center justify-center bg-slate-50 dark:bg-[#151a2d] mb-4 relative hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                        <input type="file" id="arquivoImportacaoCanc" accept=".xls, .htm, .html" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                        <div class="text-center pointer-events-none">
+                            <span class="text-3xl">📄</span>
+                            <p class="text-slate-500 dark:text-slate-400 font-bold mt-2 text-sm">Clique ou arraste o arquivo aqui</p>
+                        </div>
+                    </div>
+
+                    <button id="btnArquivoCanc" onclick="processarArquivoImportacaoCanc()" class="w-full py-3 bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white font-black rounded-xl shadow-md transition transform hover:-translate-y-0.5">Ler Arquivo</button>
+                </div>
+            </div>
+            
+            <div class="mt-6 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-4 rounded-lg text-sm text-indigo-800 dark:text-indigo-300 font-medium">
+                <b class="text-indigo-900 dark:text-indigo-200">Ordem Esperada das Colunas (Da Esquerda para a Direita):</b><br>
+                <code class="block mt-2 bg-white dark:bg-slate-800 p-2 rounded border border-indigo-100 dark:border-indigo-700">Nome | Placa | Chassi | Email | Telefone | Fipe | Estado | Cidade | Bairro | Situação Original</code>
+            </div>
+        </div>
+    </div>
+
     <div id="tela-dashboard" class="h-full hidden flex-col p-8 overflow-y-auto">
       <div class="flex justify-between items-center mb-8 shrink-0">
         <div class="flex items-center gap-4">
@@ -360,18 +402,37 @@
 
     <div id="tela-cadastro" class="h-full hidden flex-col p-8 overflow-y-auto">
       <div class="max-w-5xl mx-auto w-full shrink-0">
-        <div class="bg-indigo-600 dark:bg-indigo-700 text-white rounded-t-2xl p-8 shadow-lg"><h2 class="text-3xl font-black mb-2 tracking-tight">🤖 Motor de Importação SGA</h2><p class="text-indigo-100 font-medium">Cole a tabela do Hinova. A Inteligência fatiará as linhas e extrairá a <b>FIPE (R$)</b> se disponível.</p></div>
-        <div class="bg-white dark:bg-darkcard rounded-b-2xl shadow-xl border border-slate-200 dark:border-darkborder p-8 mb-6">
-          <textarea id="txtPastedSGA" class="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-700 rounded-xl p-5 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-300 h-48 mb-5 transition" placeholder="Cole aqui as linhas copiadas do SGA Hinova..."></textarea>
-          <div class="flex justify-end gap-4"><button onclick="limparLote()" class="px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition">Limpar Tela</button><button onclick="processarPastedData()" class="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition flex items-center gap-2 transform hover:-translate-y-0.5">🔍 Analisar Texto</button></div>
+        <div class="bg-indigo-600 dark:bg-indigo-700 text-white rounded-t-2xl p-8 shadow-lg">
+            <h2 class="text-3xl font-black mb-2 tracking-tight">🤖 Motor de Importação SGA</h2>
+            <p class="text-indigo-100 font-medium">Importe o arquivo XLS/HTM do sistema ou cole a tabela do Hinova abaixo. A Inteligência fatiará as linhas, extrairá a <b>FIPE (R$)</b> e evitará duplicidades de chassi ou placa.</p>
         </div>
-        <div id="boxPreviewLote" class="bg-white dark:bg-darkcard rounded-2xl shadow-xl border border-slate-200 dark:border-darkborder p-8 hidden flex-col animate-[fadeIn_0.3s_ease-out]">
-          <div class="flex justify-between items-center mb-6 shrink-0"><h3 class="font-bold text-slate-800 dark:text-white text-xl">Pré-Visualização (<span id="contPreview" class="text-indigo-600 dark:text-indigo-400">0</span> Clientes)</h3><button onclick="confirmarLoteBanco()" id="btnConfirmarLote" class="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 dark:shadow-none hover:bg-emerald-700 transition transform hover:-translate-y-0.5 flex items-center gap-2">📥 Salvar no Banco Seguro</button></div>
-          <div class="overflow-y-auto max-h-[500px] border border-slate-200 dark:border-slate-700 rounded-xl flex-1">
-            <table class="min-w-full text-left text-sm relative">
-              <thead class="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10"><tr class="text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-bold"><th class="py-3 px-4">Data Limpa</th><th class="py-3 px-4">Nome Extraído</th><th class="py-3 px-4">Veículo / FIPE</th><th class="py-3 px-4">Contato</th></tr></thead>
-              <tbody id="corpoPreview" class="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-700 dark:text-slate-300"></tbody>
-            </table>
+        
+        <div class="bg-white dark:bg-darkcard rounded-b-2xl shadow-xl border border-slate-200 dark:border-darkborder p-8 mb-6">
+          
+          <div class="mb-6 p-5 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl">
+              <label class="block text-sm font-bold text-indigo-700 dark:text-indigo-300 mb-3">Opção 1: Importar Arquivo (XLS / HTM)</label>
+              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <input type="file" id="arquivoImportacao" accept=".xls, .htm, .html" class="block w-full text-sm text-slate-500 dark:text-slate-400 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <button id="btnImportarArquivo" onclick="processarArquivoImportacao()" class="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition flex items-center justify-center gap-2 whitespace-nowrap transform hover:-translate-y-0.5">
+                      📄 Processar Arquivo
+                  </button>
+              </div>
+          </div>
+
+          <div class="flex items-center my-6">
+              <div class="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+              <span class="mx-4 text-slate-400 text-sm font-bold uppercase tracking-wider">OU</span>
+              <div class="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+          </div>
+
+          <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Opção 2: Colar Tabela do Sistema</label>
+          <textarea id="txtPastedSGA" class="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-700 rounded-xl p-5 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-300 h-48 mb-5 transition" placeholder="Cole aqui as linhas copiadas do SGA Hinova..."></textarea>
+          
+          <div id="statusImportacao" class="mb-5 text-sm font-bold hidden px-5 py-4 rounded-xl transition-all duration-300"></div>
+
+          <div class="flex justify-end gap-4">
+              <button onclick="limparLote()" class="px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition">Limpar Tela</button>
+              <button id="btnAnalisarTexto" onclick="processarPastedData()" class="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition flex items-center gap-2 transform hover:-translate-y-0.5">🔍 Analisar Texto Colado</button>
           </div>
         </div>
       </div>
@@ -472,7 +533,69 @@
     </div>
 
   </main>
-  
+
+  <div id="modal-staging" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] hidden flex-col items-center justify-center p-4 animate-[fadeIn_0.2s_ease-out]">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-200 dark:border-slate-700">
+      <div class="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
+        <div>
+          <h3 class="font-black text-xl text-slate-800 dark:text-white flex items-center gap-2">👀 Fila de Triagem (Double Check)</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1"><span id="contPreview" class="font-bold text-indigo-600 dark:text-indigo-400">0</span> novos clientes encontrados. Duplicatas já foram barradas.</p>
+        </div>
+        <button onclick="limparLote()" class="text-slate-400 hover:text-rose-500 transition text-3xl font-light">&times;</button>
+      </div>
+      <div class="overflow-y-auto flex-1 p-0">
+        <table class="min-w-full text-left text-sm">
+          <thead class="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+            <tr class="text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider font-bold">
+              <th class="py-3 px-4 w-10 text-center"><input type="checkbox" onchange="marcarTodosPreview(this)" class="w-4 h-4 rounded text-indigo-600 cursor-pointer"></th>
+              <th class="py-3 px-4 text-center">SLA / Sugestão</th>
+              <th class="py-3 px-4">Nome e Divergências</th>
+              <th class="py-3 px-4">Veículo / FIPE</th>
+              <th class="py-3 px-4 text-center">Ação</th>
+            </tr>
+          </thead>
+          <tbody id="corpoPreview" class="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900"></tbody>
+        </table>
+      </div>
+      <div class="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex justify-end gap-3">
+         <button onclick="limparLote()" class="px-5 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">Cancelar</button>
+         <button id="btn-imp-sel" onclick="importarSelecionadosPreview()" class="px-5 py-2.5 text-sm font-bold bg-slate-700 hover:bg-slate-800 text-white rounded-lg transition flex items-center gap-2">✔️ Importar Selecionados</button>
+         <button id="btn-imp-todos" onclick="importarTodosPreview()" class="px-5 py-2.5 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-md transition flex items-center gap-2">📥 Importar Todos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Triagem Double-Check CANCELAMENTOS -->
+  <div id="modal-triagem-canc" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4">
+      <div class="bg-white dark:bg-[#1e2336] rounded-xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[90vh]">
+          <div class="p-6 border-b flex justify-between">
+              <div>
+                  <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">👀 Triagem de Cancelados</h2>
+                  <p class="text-sm font-bold text-rose-600 mt-1"><span id="txt-triagem-canc-novos">0</span> clientes lidos.</p>
+              </div>
+              <button onclick="fecharModalTriagemCanc()" class="text-slate-400 hover:text-slate-600">✖</button>
+          </div>
+          <div class="overflow-y-auto flex-1 bg-slate-50">
+              <table class="w-full text-left border-collapse">
+                  <thead class="bg-slate-100 text-[10px] uppercase font-black sticky top-0 shadow-sm">
+                      <tr>
+                          <th class="p-4 w-10 text-center"><input type="checkbox" id="chk-triagem-canc-master" onchange="toggleAllTriagemCanc(this)" checked></th>
+                          <th class="p-4">Situação</th>
+                          <th class="p-4">Cliente</th>
+                          <th class="p-4">Veículo</th>
+                          <th class="p-4 text-center">Ação</th>
+                      </tr>
+                  </thead>
+                  <tbody id="corpo-triagem-canc"></tbody>
+              </table>
+          </div>
+          <div class="p-5 border-t flex justify-end gap-3 bg-white">
+              <button onclick="fecharModalTriagemCanc()" class="px-5 py-2.5 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">Cancelar</button>
+              <button onclick="importarSelecionadosTriagemCanc()" class="px-6 py-2.5 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700">Importar Selecionados</button>
+          </div>
+      </div>
+  </div>
+
   <?!= include('Scripts'); ?>
 </body>
 </html>
